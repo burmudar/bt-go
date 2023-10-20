@@ -14,25 +14,44 @@ import (
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, error) {
-	if unicode.IsDigit(rune(bencodedString[0])) {
+	switch {
+	case unicode.IsDigit(rune(bencodedString[0])):
+		{
+			colonIdx := strings.IndexRune(bencodedString, ':')
+			if colonIdx < 0 {
+				return "", fmt.Errorf("invalid string encoding: %v", bencodedString)
+			}
 
-		colonIdx := strings.IndexRune(bencodedString, ':')
+			encodedLen := bencodedString[:colonIdx]
 
-		encodedLen := bencodedString[:colonIdx]
+			length, err := strconv.Atoi(encodedLen)
+			if err != nil {
+				return "", err
+			}
 
-		length, err := strconv.Atoi(encodedLen)
-		if err != nil {
-			return "", err
+			strLen := len(bencodedString) - colonIdx - 1
+			if length > strLen {
+				return "", fmt.Errorf("invalid length encoded - got %d but string is %d", length, strLen)
+			}
+
+			return bencodedString[colonIdx+1 : colonIdx+1+length], nil
 		}
-
-		strLen := len(bencodedString) - colonIdx - 1
-		if length > strLen {
-			return "", fmt.Errorf("invalid length encoded - got %d but string is %d", length, strLen)
+	case unicode.IsLetter(rune(bencodedString[0])) && bencodedString[0] == 'i':
+		{
+			end := strings.IndexRune(bencodedString, 'e')
+			if end < 0 {
+				return "", fmt.Errorf("invalid integer encoding: %v", bencodedString)
+			}
+			num, err := strconv.Atoi(bencodedString[1:end])
+			if err != nil {
+				return "", fmt.Errorf("failed to decode integer: %v", bencodedString)
+			}
+			return num, err
 		}
-
-		return bencodedString[colonIdx+1 : colonIdx+1+length], nil
-	} else {
-		return "", fmt.Errorf("Only strings are supported at the moment")
+	default:
+		{
+			return "", fmt.Errorf("Only strings are supported at the moment")
+		}
 	}
 }
 
