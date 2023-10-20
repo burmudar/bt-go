@@ -10,17 +10,46 @@ import (
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
 
+func decodeDict(encoded string) (interface{}, int, error) {
+	dict := make(map[string]interface{}, 0)
+	var cursor string = encoded
+	idx := 1
+	for cursor[idx] != 'e' && len(cursor[idx:]) != 1 {
+		k, n, err := decodeString(cursor[idx:])
+		if err != nil {
+			return "", 0, err
+		}
+		idx += n + 1
+		var key string
+		if k, ok := k.(string); !ok {
+			return "", idx, fmt.Errorf("expected string key but got %q", k)
+		} else {
+			key = k
+		}
+
+		v, n, err := decodeBencode(cursor[idx:])
+		if err != nil {
+			return "", 0, err
+		}
+		dict[key] = v
+		idx += n + 1
+
+	}
+
+	return dict, idx, nil
+}
+
 func decodeList(encoded string) (interface{}, int, error) {
 	values := make([]interface{}, 0)
 	var cursor string = encoded
-	start := 1
-	for cursor[start] != 'e' && len(cursor[start:]) != 1 {
-		value, n, err := decodeBencode(cursor[start:])
+	idx := 1
+	for cursor[idx] != 'e' && len(cursor[idx:]) != 1 {
+		value, n, err := decodeBencode(cursor[idx:])
 		if err != nil {
 			return "", 0, err
 		}
 		values = append(values, value)
-		start += n + 1
+		idx += n + 1
 	}
 
 	return values, len(encoded) - 2, nil
@@ -64,6 +93,10 @@ func decodeInt(encoded string) (interface{}, int, error) {
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, int, error) {
 	switch {
+	case unicode.IsLetter(rune(bencodedString[0])) && bencodedString[0] == 'd':
+		{
+			return decodeDict(bencodedString)
+		}
 	case unicode.IsLetter(rune(bencodedString[0])) && bencodedString[0] == 'l':
 		{
 			return decodeList(bencodedString)
