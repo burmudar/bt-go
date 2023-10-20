@@ -12,14 +12,14 @@ import (
 
 func decodeDict(encoded string) (interface{}, int, error) {
 	dict := make(map[string]interface{}, 0)
-	var cursor string = encoded
+	var cursor = encoded
 	idx := 1
 	for cursor[idx] != 'e' && len(cursor[idx:]) != 1 {
-		k, n, err := decodeString(cursor[idx:])
+		k, n, err := decodeBencode(cursor[idx:])
 		if err != nil {
 			return "", 0, err
 		}
-		idx += n + 1
+		idx += n
 		var key string
 		if k, ok := k.(string); !ok {
 			return "", idx, fmt.Errorf("expected string key but got %q", k)
@@ -32,7 +32,7 @@ func decodeDict(encoded string) (interface{}, int, error) {
 			return "", 0, err
 		}
 		dict[key] = v
-		idx += n + 1
+		idx += n
 
 	}
 
@@ -41,18 +41,18 @@ func decodeDict(encoded string) (interface{}, int, error) {
 
 func decodeList(encoded string) (interface{}, int, error) {
 	values := make([]interface{}, 0)
-	var cursor string = encoded
+	var cursor = encoded
 	idx := 1
 	for cursor[idx] != 'e' && len(cursor[idx:]) != 1 {
-		value, n, err := decodeBencode(cursor[idx:])
+		v, n, err := decodeBencode(cursor[idx:])
 		if err != nil {
 			return "", 0, err
 		}
-		values = append(values, value)
-		idx += n + 1
+		values = append(values, v)
+		idx += n
 	}
 
-	return values, len(encoded) - 2, nil
+	return values, idx, nil
 }
 
 func decodeString(encoded string) (interface{}, int, error) {
@@ -70,22 +70,26 @@ func decodeString(encoded string) (interface{}, int, error) {
 
 	strLen := len(encoded) - colonIdx - 1
 	if length > strLen {
-		return "", 0, fmt.Errorf("invalid length encoded - got %d but string is %d", length, strLen)
+		return "", 0, fmt.Errorf("invalid length encoded - got %d but %q is %d", length, encoded, strLen)
 	}
 
-	return encoded[colonIdx+1 : colonIdx+1+length], 1 + length, nil
+	return encoded[colonIdx+1 : colonIdx+1+length], colonIdx + 1 + length, nil
 }
 
 func decodeInt(encoded string) (interface{}, int, error) {
+	if encoded[0] != 'i' {
+		return nil, 0, fmt.Errorf("cannot decode %q to int", encoded)
+	}
+	start := 1
 	end := strings.IndexRune(encoded, 'e')
 	if end < 0 {
 		return "", 0, fmt.Errorf("invalid integer encoding: %v", encoded)
 	}
-	num, err := strconv.Atoi(encoded[1:end])
+	num, err := strconv.Atoi(encoded[start:end])
 	if err != nil {
 		return "", 0, fmt.Errorf("failed to decode integer: %v", encoded)
 	}
-	return num, end, nil
+	return num, end - start + 2, nil
 }
 
 // Example:
@@ -111,7 +115,7 @@ func decodeBencode(bencodedString string) (interface{}, int, error) {
 		}
 	default:
 		{
-			return "", 0, fmt.Errorf("Only strings are supported at the moment")
+			return "", 0, fmt.Errorf("only strings are supported at the moment: %q", bencodedString)
 		}
 	}
 }
