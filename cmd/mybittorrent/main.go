@@ -1,11 +1,11 @@
 package main
 
 import (
-	// Uncomment this line to pass the first stage
-	// "encoding/json"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
 	// bencode "github.com/jackpal/bencode-go" // Available if you need it!
 )
@@ -15,49 +15,49 @@ import (
 // - 10:hello12345 -> hello12345
 func decodeBencode(bencodedString string) (interface{}, error) {
 	if unicode.IsDigit(rune(bencodedString[0])) {
-		var firstColonIndex int
 
-		for i := 0; i < len(bencodedString); i++ {
-			if bencodedString[i] == ':' {
-				firstColonIndex = i
-				break
-			}
-		}
+		colonIdx := strings.IndexRune(bencodedString, ':')
 
-		lengthStr := bencodedString[:firstColonIndex]
+		encodedLen := bencodedString[:colonIdx]
 
-		length, err := strconv.Atoi(lengthStr)
+		length, err := strconv.Atoi(encodedLen)
 		if err != nil {
 			return "", err
 		}
 
-		return bencodedString[firstColonIndex+1 : firstColonIndex+1+length], nil
+		strLen := len(bencodedString) - colonIdx - 1
+		if length > strLen {
+			return "", fmt.Errorf("invalid length encoded - got %d but string is %d", length, strLen)
+		}
+
+		return bencodedString[colonIdx+1 : colonIdx+1+length], nil
 	} else {
 		return "", fmt.Errorf("Only strings are supported at the moment")
 	}
 }
 
 func main() {
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	fmt.Println("Logs from your program will appear here!")
-
 	command := os.Args[1]
 
 	if command == "decode" {
-		// Uncomment this block to pass the first stage
-		//
-		// bencodedValue := os.Args[2]
-		//
-		// decoded, err := decodeBencode(bencodedValue)
-		// if err != nil {
-		// 	fmt.Println(err)
-		// 	return
-		// }
-		//
-		// jsonOutput, _ := json.Marshal(decoded)
-		// fmt.Println(string(jsonOutput))
+		value := os.Args[2]
+
+		if r, err := decodeBencode(value); err == nil {
+			r, err := json.Marshal(r)
+			if err != nil {
+				fmt.Printf("marshalling faliure: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(string(r))
+
+		} else {
+			fmt.Printf("decoding faliure: %v\n", err)
+			os.Exit(1)
+		}
+
 	} else {
 		fmt.Println("Unknown command: " + command)
 		os.Exit(1)
 	}
+
 }
