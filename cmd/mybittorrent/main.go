@@ -17,7 +17,7 @@ func decodeBencode(bencodedString string) (interface{}, int, error) {
 	switch {
 	case unicode.IsLetter(rune(bencodedString[0])) && bencodedString[0] == 'l':
 		{
-			var values []interface{}
+			values := make([]interface{}, 0)
 			var cursor string = bencodedString
 			start := 1
 			for cursor[start] != 'e' && len(cursor[start:]) != 1 {
