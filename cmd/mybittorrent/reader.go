@@ -32,9 +32,10 @@ func (b *BencodeReader) readNull() {
 }
 
 func (b *BencodeReader) readChar() {
-	if b.ch == NULL_TERMINATOR && b.position >= 0 {
-		return
-	}
+	// TODO(burmudar): this breaks when reading largers torrents
+	// if b.ch == NULL_TERMINATOR && b.position >= 0 {
+	// 	return
+	// }
 	if b.readPosition >= len(b.input) {
 		b.ch = 0
 	} else {
@@ -58,8 +59,8 @@ func (b *BencodeReader) peek() byte {
 // the amount of bytes read
 func (b *BencodeReader) readN(n int) ([]byte, int) {
 	data := []byte{}
-	c := n - 1
-	for c >= 0 && b.ch != EOI {
+	c := n
+	for c != 0 {
 		data = append(data, b.ch)
 		b.readChar()
 		c--

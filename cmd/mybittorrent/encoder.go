@@ -27,6 +27,8 @@ func (b *BenEncoder) encode(value interface{}) ([]byte, error) {
 		b.encodeList(v)
 	case map[string]interface{}:
 		b.encodeDict(v)
+	default:
+		return nil, fmt.Errorf("unknown type for encoding: %T", v)
 	}
 
 	return b.buf.Bytes(), nil
@@ -41,17 +43,24 @@ func (b *BenEncoder) encodeList(list []interface{}) {
 }
 
 func (b *BenEncoder) encodeDict(dict map[string]interface{}) {
-	fmt.Fprintf(b.buf, "d")
 	// bencoding requries keys to be lexographically sorted
+	fmt.Fprintf(b.buf, "d")
 	keys := []string{}
 	for k := range dict {
 		keys = append(keys, k)
 	}
 
 	sort.Strings(keys)
+
 	for _, k := range keys {
-		b.encode(k)
-		b.encode(dict[k])
+		if k != "" {
+			b.encode(k)
+		} else {
+			continue
+		}
+		if v, ok := dict[k]; ok {
+			b.encode(v)
+		}
 	}
 	fmt.Fprintf(b.buf, "e")
 }

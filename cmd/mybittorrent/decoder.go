@@ -3,11 +3,14 @@ package main
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
+	"strings"
 	"unicode"
+	//"github.com/jackpal/bencode-go"
 )
 
 type FileInfo struct {
@@ -72,20 +75,19 @@ func decodeTorrent(filename string) (*Meta, error) {
 	piecesStr := info["pieces"].(string)
 	buf := bytes.NewBufferString(piecesStr)
 
-	chunks := len(piecesStr) / 20
-	m.Pieces = make([]string, 0, chunks)
-	for i := 0; i < chunks; i++ {
+	m.Pieces = []string{}
+	for {
 		data := make([]byte, 20)
-		_, err := buf.Read(data)
-		if err != nil {
+		n, err := buf.Read(data)
+		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
-
-		m.Pieces = append(m.Pieces, string(data))
-	}
-
-	if len(m.Pieces) != chunks {
-		panic("incorrect pieces length")
+		if n > 0 {
+			m.Pieces = append(m.Pieces, string(data[:n]))
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
 	}
 
 	if v, ok := info["length"]; ok {
@@ -101,6 +103,32 @@ func decodeTorrent(filename string) (*Meta, error) {
 	}
 
 	return &m, nil
+}
+
+func (m *Meta) InfoHash() ([20]byte, error) {
+	var info map[string]interface{}
+	if len(m.Files) == 0 {
+		info = map[string]interface{}{
+			"name":         m.Name,
+			"length":       m.Length,
+			"piece length": m.PieceLength,
+			"pieces":       strings.Join(m.Pieces, ""),
+		}
+	} else {
+		info = map[string]interface{}{
+			"name":         m.Name,
+			"piece length": m.PieceLength,
+			"pieces":       strings.Join(m.Pieces, ""),
+			"files":        m.Files,
+		}
+	}
+
+	w := NewBenEncoder()
+	data, err := w.encode(info)
+	if err != nil {
+		return [20]byte{}, err
+	}
+	return sha1.Sum(data), nil
 }
 
 func decodeDict(r *BencodeReader) (interface{}, error) {
@@ -155,7 +183,10 @@ func decodeString(r *BencodeReader) (interface{}, error) {
 		return nil, err
 	}
 	// now we can read the string with the length that we got
-	data, _ := r.readN(length)
+	data, n := r.readN(length)
+	if n != length {
+		fmt.Printf("ERR: requested %d read but return %d", length, n)
+	}
 	return string(data), nil
 }
 

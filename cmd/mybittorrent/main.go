@@ -1,13 +1,12 @@
 package main
 
 import (
-	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	//_bencode "github.com/jackpal/bencode-go" // Available if you need it!
+	//bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
 )
 
@@ -33,7 +32,8 @@ func main() {
 		}
 	case "info":
 		{
-			t, err := decodeTorrent(os.Args[2])
+			filename := os.Args[2]
+			t, err := decodeTorrent(filename)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to read torrent %q: %v", os.Args[2], err)
 			}
@@ -46,10 +46,12 @@ func main() {
 					fmt.Printf("Length: %d Files: %s\n", f.Length, strings.Join(f.Paths, " "))
 				}
 			}
-			w := NewBenEncoder()
-			d, _ := w.encode(t.RawInfo)
-			sha := sha1.Sum(d)
-			fmt.Printf("Info Hash: %s\n", hex.EncodeToString(sha[:]))
+
+			hash, err := t.InfoHash()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "calculating info hash error: %v", err)
+			}
+			fmt.Printf("Info Hash: %s\n", hex.EncodeToString(hash[:]))
 		}
 	default:
 		{
