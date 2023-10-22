@@ -57,7 +57,7 @@ func (b *BenEncoder) encodeDict(dict map[string]interface{}) {
 	}
 
 	sort.SliceStable(keys, func(i, j int) bool {
-		return keys[i] <= keys[j]
+		return keys[i] >= keys[j]
 	})
 	for _, k := range keys {
 		b.encode(k)
