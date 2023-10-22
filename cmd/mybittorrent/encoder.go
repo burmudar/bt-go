@@ -49,16 +49,14 @@ func (b *BenEncoder) encodeList(list []interface{}) {
 }
 
 func (b *BenEncoder) encodeDict(dict map[string]interface{}) {
-	fmt.Fprintf(b.buf, "l")
+	fmt.Fprintf(b.buf, "d")
 	// bencoding requries keys to be lexographically sorted
 	keys := []string{}
 	for k := range dict {
 		keys = append(keys, k)
 	}
 
-	sort.SliceStable(keys, func(i, j int) bool {
-		return keys[i] >= keys[j]
-	})
+	sort.Strings(keys)
 	for _, k := range keys {
 		b.encode(k)
 		b.encode(dict[k])
