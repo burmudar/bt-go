@@ -25,10 +25,6 @@ func main() {
 					os.Exit(1)
 				}
 				fmt.Println(string(r))
-				w := NewBenEncoder()
-				data, _ := w.encode(result)
-				fmt.Printf("encoded: %s\n", string(data))
-
 			} else {
 				fmt.Printf("decoding faliure: %v\n", err)
 				os.Exit(1)
