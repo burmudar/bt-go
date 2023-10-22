@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"strconv"
@@ -192,7 +194,7 @@ func decodeBencode(r *BencodeReader) (interface{}, error) {
 		}
 	default:
 		{
-			return "", fmt.Errorf("only strings are supported at the moment: %x", r.ch)
+			return "", fmt.Errorf("unknown decode tag: %v", r.ch)
 		}
 	}
 }
