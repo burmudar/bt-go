@@ -20,9 +20,9 @@ func (b *BenEncoder) encode(value interface{}) ([]byte, error) {
 
 	switch v := value.(type) {
 	case string:
-		b.encodeString(v)
-	case int:
-		b.encodeInt(v)
+		fmt.Fprintf(b.buf, "%d:%s", len(v), v)
+	case int, int8, int16, int32, int64:
+		fmt.Fprintf(b.buf, "i%de", v)
 	case []interface{}:
 		b.encodeList(v)
 	case map[string]interface{}:
@@ -30,14 +30,6 @@ func (b *BenEncoder) encode(value interface{}) ([]byte, error) {
 	}
 
 	return b.buf.Bytes(), nil
-}
-
-func (b *BenEncoder) encodeInt(v int) {
-	fmt.Fprintf(b.buf, "i%de", v)
-}
-
-func (b *BenEncoder) encodeString(v string) {
-	fmt.Fprintf(b.buf, "%d:%s", len(v), v)
 }
 
 func (b *BenEncoder) encodeList(list []interface{}) {
