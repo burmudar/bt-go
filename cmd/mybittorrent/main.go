@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -47,7 +48,8 @@ func main() {
 			}
 			w := NewBenEncoder()
 			d, _ := w.encode(t.RawInfo)
-			fmt.Printf("Info Hash: %x\n", sha1.Sum(d))
+			sha := sha1.Sum(d)
+			fmt.Printf("Info Hash: %s\n", hex.EncodeToString(sha[:]))
 		}
 	default:
 		{
