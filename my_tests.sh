@@ -5,7 +5,7 @@
 ./your_bittorrent.sh decode i10000e
 ./your_bittorrent.sh decode i-1000e
 # strings
-./your_bittorrent.sh decode 5:william
+./your_bittorrent.sh decode 7:william
 ./your_bittorrent.sh decode 1:w
 ./your_bittorrent.sh decode 5:hello
 # dictionaries
