@@ -10,6 +10,28 @@ import (
 	"os"
 )
 
+func printMetaInfo(m *Meta) {
+	fmt.Printf("Tracker URL: %s\n", m.Announce)
+	if len(m.Files) == 0 {
+		fmt.Printf("Length: %d\n", m.Length)
+	} else {
+		for _, f := range m.Files {
+			fmt.Printf("Length: %d Files: %s\n", f.Length, strings.Join(f.Paths, " "))
+		}
+	}
+
+	hash, err := m.InfoHash()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "calculating info hash error: %v", err)
+	}
+	fmt.Printf("Info Hash: %s\n", hex.EncodeToString(hash[:]))
+	fmt.Printf("Piece Length: %d\n", m.PieceLength)
+	fmt.Println("Piece Hashes:")
+	for _, p := range m.Pieces {
+		fmt.Printf("%x\n", p)
+	}
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -37,21 +59,7 @@ func main() {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to read torrent %q: %v", os.Args[2], err)
 			}
-
-			fmt.Printf("Tracker URL: %s\n", t.Announce)
-			if len(t.Files) == 0 {
-				fmt.Printf("Length: %d\n", t.Length)
-			} else {
-				for _, f := range t.Files {
-					fmt.Printf("Length: %d Files: %s\n", f.Length, strings.Join(f.Paths, " "))
-				}
-			}
-
-			hash, err := t.InfoHash()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "calculating info hash error: %v", err)
-			}
-			fmt.Printf("Info Hash: %s\n", hex.EncodeToString(hash[:]))
+			printMetaInfo(t)
 		}
 	default:
 		{
