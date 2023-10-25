@@ -163,9 +163,7 @@ func decodeList(r *BencodeReader) (interface{}, error) {
 	}
 	r.readChar()
 	for r.ch != 'e' && r.Err == nil {
-		println("1>>", string(r.ch))
 		v, err := decodeBencode(r)
-		println("2>>", string(r.ch))
 		if err != nil {
 			return nil, err
 		}
@@ -195,7 +193,6 @@ func decodeBencode(r *BencodeReader) (interface{}, error) {
 		}
 	case unicode.IsDigit(rune(r.ch)):
 		{
-			println("s")
 			return r.readString()
 		}
 	default:
