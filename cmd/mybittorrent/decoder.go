@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"unicode"
 	//"github.com/jackpal/bencode-go"
@@ -134,14 +133,14 @@ func (m *Meta) InfoHash() ([20]byte, error) {
 func decodeDict(r *BencodeReader) (interface{}, error) {
 	dict := make(map[string]interface{}, 0)
 	r.readChar() // move past 'd'
-	for r.ch != 'e' && r.ch != EOI {
+	for r.ch != 'e' && r.Err == nil {
 		k, err := decodeBencode(r)
 		if err != nil {
 			return "", err
 		}
 		var key string
 		if k, ok := k.(string); !ok {
-			return "", fmt.Errorf("expected string key but got %q at %d - %x", k, r.position, r.ch)
+			return "", fmt.Errorf("expected string key but got %q - %x", k, r.ch)
 		} else {
 			key = k
 		}
@@ -158,9 +157,15 @@ func decodeDict(r *BencodeReader) (interface{}, error) {
 
 func decodeList(r *BencodeReader) (interface{}, error) {
 	values := make([]interface{}, 0)
-	r.readChar() // advance past 'l'
-	for r.ch != 'e' && r.ch != EOI {
+	// advance past 'l'
+	if r.ch != 'l' {
+		return nil, fmt.Errorf("current ch '%v' - expected 'l'", string(r.ch))
+	}
+	r.readChar()
+	for r.ch != 'e' && r.Err == nil {
+		println("1>>", string(r.ch))
 		v, err := decodeBencode(r)
+		println("2>>", string(r.ch))
 		if err != nil {
 			return nil, err
 		}
@@ -169,37 +174,6 @@ func decodeList(r *BencodeReader) (interface{}, error) {
 	r.readChar() // move past 'e'
 
 	return values, nil
-}
-
-func decodeString(r *BencodeReader) (interface{}, error) {
-	num := []byte{}
-	for r.ch != ':' {
-		num = append(num, byte(r.ch))
-		r.readChar()
-	}
-	r.readChar()
-	length, err := strconv.Atoi(string(num))
-	if err != nil {
-		return nil, err
-	}
-	// now we can read the string with the length that we got
-	data, n := r.readN(length)
-	if n != length {
-		fmt.Printf("ERR: requested %d read but return %d", length, n)
-	}
-	return string(data), nil
-}
-
-func decodeInt(r *BencodeReader) (interface{}, error) {
-	r.readChar() // move past 'i'
-	num := []byte{}
-	for r.ch != 'e' {
-		num = append(num, byte(r.ch))
-		r.readChar()
-	}
-	r.readChar() // move past 'e'
-
-	return strconv.Atoi(string(num))
 }
 
 // Example:
@@ -217,15 +191,16 @@ func decodeBencode(r *BencodeReader) (interface{}, error) {
 		}
 	case r.ch == 'i':
 		{
-			return decodeInt(r)
+			return r.readInt()
 		}
 	case unicode.IsDigit(rune(r.ch)):
 		{
-			return decodeString(r)
+			println("s")
+			return r.readString()
 		}
 	default:
 		{
-			return "", fmt.Errorf("unknown decode tag: %v", r.ch)
+			return "", fmt.Errorf("unknown decode tag: %v", string(r.ch))
 		}
 	}
 }

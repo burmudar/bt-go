@@ -1,70 +1,72 @@
 package main
 
-const (
-	EOI             = 0
-	NULL_TERMINATOR = '\x00'
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"strconv"
 )
 
 type BencodeReader struct {
-	input    string
-	position int
+	input *bytes.Reader
 	// readPosition points to the next place we will read
-	readPosition int
-	ch           byte
-	curr         string
+	Err  error
+	ch   byte
+	curr string
 }
 
 func NewBencodeReader(input string) *BencodeReader {
 	r := BencodeReader{
-		input:    input,
-		position: -1,
+		input: bytes.NewReader([]byte(input)),
 	}
 
-	r.readChar()
+	r.readChar() // populate the first char
+
 	return &r
 }
 
-func (b *BencodeReader) readNull() {
-	b.ch = b.input[b.readPosition]
-	b.curr = string(b.ch)
-	b.position = b.readPosition
-	b.readPosition += 1
+func (b *BencodeReader) readInt() (int, error) {
+	if b.ch != 'i' {
+		return 0, fmt.Errorf("expected i to be current index")
+	}
+	b.readChar()
+
+	num := []byte{}
+	for b.ch != 'e' && b.Err == nil {
+		num = append(num, b.ch)
+		b.readChar()
+	}
+	b.readChar() // read past e
+
+	return strconv.Atoi(string(num))
+}
+
+func (b *BencodeReader) readString() (string, error) {
+	num := []byte{}
+	for b.ch != ':' && b.Err == nil {
+		num = append(num, b.ch)
+		b.readChar()
+	}
+	if b.Err != nil {
+		return "", b.Err
+	}
+
+	length, err := strconv.Atoi(string(num))
+	if err != nil {
+		return "", err
+	}
+	// now we can read the string with the length that we got
+	data := make([]byte, length)
+	_, err = b.input.Read(data)
+	// advance
+	b.readChar()
+	return string(data), err
 }
 
 func (b *BencodeReader) readChar() {
-	// TODO(burmudar): this breaks when reading largers torrents
-	// if b.ch == NULL_TERMINATOR && b.position >= 0 {
-	// 	return
-	// }
-	if b.readPosition >= len(b.input) {
-		b.ch = 0
-	} else {
-		b.ch = b.input[b.readPosition]
-		b.curr = string(b.ch)
-		b.position = b.readPosition
-		b.readPosition += 1
+	if b.input.Len() == 0 {
+		b.Err = io.EOF
+		return
 	}
-}
-
-func (b *BencodeReader) peek() byte {
-	if b.readPosition >= len(b.input) {
-		return 0
-	} else {
-		return b.input[b.readPosition]
-	}
-}
-
-// readN advances the curser n amount and returns the bytes read as well as how many bytes were read.
-// If we reached end of input (EOI) before the requested amount of bytes were read, we return only what we read and the
-// the amount of bytes read
-func (b *BencodeReader) readN(n int) ([]byte, int) {
-	data := []byte{}
-	c := n
-	for c != 0 {
-		data = append(data, b.ch)
-		b.readChar()
-		c--
-	}
-
-	return data, n - c
+	b.ch, b.Err = b.input.ReadByte()
 }
