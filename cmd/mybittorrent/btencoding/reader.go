@@ -57,10 +57,13 @@ func (b *BencodeReader) ReadString() (string, error) {
 	}
 	// now we can read the string with the length that we got
 	data := make([]byte, length)
-	_, err = b.input.Read(data)
+	n, err := b.input.Read(data)
+	if n < length {
+		return "", fmt.Errorf("read %d but length to read is %d", n, length)
+	}
 	// advance
 	b.ReadChar()
-	return string(data), err
+	return string(data[:n]), err
 }
 
 func (b *BencodeReader) ReadChar() {
