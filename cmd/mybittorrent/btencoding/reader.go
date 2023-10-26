@@ -1,4 +1,4 @@
-package main
+package btencoding
 
 import (
 	"bytes"
@@ -20,32 +20,32 @@ func NewBencodeReader(input string) *BencodeReader {
 		input: bytes.NewReader([]byte(input)),
 	}
 
-	r.readChar() // populate the first char
+	r.ReadChar() // populate the first char
 
 	return &r
 }
 
-func (b *BencodeReader) readInt() (int, error) {
+func (b *BencodeReader) ReadInt() (int, error) {
 	if b.ch != 'i' {
 		return 0, fmt.Errorf("expected i to be current index")
 	}
-	b.readChar()
+	b.ReadChar()
 
 	num := []byte{}
 	for b.ch != 'e' && b.Err == nil {
 		num = append(num, b.ch)
-		b.readChar()
+		b.ReadChar()
 	}
-	b.readChar() // read past e
+	b.ReadChar() // read past e
 
 	return strconv.Atoi(string(num))
 }
 
-func (b *BencodeReader) readString() (string, error) {
+func (b *BencodeReader) ReadString() (string, error) {
 	num := []byte{}
 	for b.ch != ':' && b.Err == nil {
 		num = append(num, b.ch)
-		b.readChar()
+		b.ReadChar()
 	}
 	if b.Err != nil {
 		return "", b.Err
@@ -59,11 +59,11 @@ func (b *BencodeReader) readString() (string, error) {
 	data := make([]byte, length)
 	_, err = b.input.Read(data)
 	// advance
-	b.readChar()
+	b.ReadChar()
 	return string(data), err
 }
 
-func (b *BencodeReader) readChar() {
+func (b *BencodeReader) ReadChar() {
 	if b.input.Len() == 0 {
 		b.Err = io.EOF
 		return

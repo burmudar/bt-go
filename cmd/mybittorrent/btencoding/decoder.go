@@ -1,4 +1,4 @@
-package main
+package btencoding
 
 import (
 	"bytes"
@@ -41,7 +41,7 @@ func newFileInfo(value map[string]interface{}) *FileInfo {
 	return &f
 }
 
-func decodeTorrent(filename string) (*Meta, error) {
+func DecodeTorrent(filename string) (*Meta, error) {
 	raw, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func decodeTorrent(filename string) (*Meta, error) {
 
 	reader := NewBencodeReader(string(raw))
 
-	data, err := decodeDict(reader)
+	data, err := DecodeDict(reader)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +130,11 @@ func (m *Meta) InfoHash() ([20]byte, error) {
 	return sha1.Sum(data), nil
 }
 
-func decodeDict(r *BencodeReader) (interface{}, error) {
+func DecodeDict(r *BencodeReader) (interface{}, error) {
 	dict := make(map[string]interface{}, 0)
-	r.readChar() // move past 'd'
+	r.ReadChar() // move past 'd'
 	for r.ch != 'e' && r.Err == nil {
-		k, err := decodeBencode(r)
+		k, err := DecodeBencode(r)
 		if err != nil {
 			return "", err
 		}
@@ -144,32 +144,32 @@ func decodeDict(r *BencodeReader) (interface{}, error) {
 		} else {
 			key = k
 		}
-		v, err := decodeBencode(r)
+		v, err := DecodeBencode(r)
 		if err != nil {
 			return "", err
 		}
 		dict[key] = v
 	}
 
-	r.readChar() // advance past 'e'
+	r.ReadChar() // advance past 'e'
 	return dict, nil
 }
 
-func decodeList(r *BencodeReader) (interface{}, error) {
+func DecodeList(r *BencodeReader) (interface{}, error) {
 	values := make([]interface{}, 0)
 	// advance past 'l'
 	if r.ch != 'l' {
 		return nil, fmt.Errorf("current ch '%v' - expected 'l'", string(r.ch))
 	}
-	r.readChar()
+	r.ReadChar()
 	for r.ch != 'e' && r.Err == nil {
-		v, err := decodeBencode(r)
+		v, err := DecodeBencode(r)
 		if err != nil {
 			return nil, err
 		}
 		values = append(values, v)
 	}
-	r.readChar() // move past 'e'
+	r.ReadChar() // move past 'e'
 
 	return values, nil
 }
@@ -177,23 +177,23 @@ func decodeList(r *BencodeReader) (interface{}, error) {
 // Example:
 // - 5:hello -> hello
 // - 10:hello12345 -> hello12345
-func decodeBencode(r *BencodeReader) (interface{}, error) {
+func DecodeBencode(r *BencodeReader) (interface{}, error) {
 	switch {
 	case r.ch == 'd':
 		{
-			return decodeDict(r)
+			return DecodeDict(r)
 		}
 	case r.ch == 'l':
 		{
-			return decodeList(r)
+			return DecodeList(r)
 		}
 	case r.ch == 'i':
 		{
-			return r.readInt()
+			return r.ReadInt()
 		}
 	case unicode.IsDigit(rune(r.ch)):
 		{
-			return r.readString()
+			return r.ReadString()
 		}
 	default:
 		{

@@ -8,9 +8,11 @@ import (
 
 	//bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/btencoding"
 )
 
-func printMetaInfo(m *Meta) {
+func printMetaInfo(m *btencoding.FileMeta) {
 	fmt.Printf("Tracker URL: %s\n", m.Announce)
 	if len(m.Files) == 0 {
 		fmt.Printf("Length: %d\n", m.Length)
@@ -40,7 +42,8 @@ func main() {
 		{
 			value := os.Args[2]
 
-			if result, err := decodeBencode(NewBencodeReader(value)); err == nil {
+			r := btencoding.NewBencodeReader(value)
+			if result, err := btencoding.DecodeBencode(r); err == nil {
 				r, err := json.Marshal(result)
 				if err != nil {
 					fmt.Printf("marshalling faliure: %v\n", err)
@@ -55,7 +58,7 @@ func main() {
 	case "info":
 		{
 			filename := os.Args[2]
-			t, err := decodeTorrent(filename)
+			t, err := btencoding.DecodeTorrent(filename)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to read torrent %q: %v", os.Args[2], err)
 			}
