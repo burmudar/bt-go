@@ -17,7 +17,7 @@ type FileInfo struct {
 	Paths  []string
 }
 
-type Meta struct {
+type FileMeta struct {
 	Announce    string
 	Name        string
 	PieceLength int
@@ -41,7 +41,7 @@ func newFileInfo(value map[string]interface{}) *FileInfo {
 	return &f
 }
 
-func DecodeTorrent(filename string) (*Meta, error) {
+func DecodeTorrent(filename string) (*FileMeta, error) {
 	raw, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func DecodeTorrent(filename string) (*Meta, error) {
 		return nil, fmt.Errorf("info dict not found")
 	}
 
-	var m Meta
+	var m FileMeta
 	m.RawInfo = info
 	m.Announce = dict["announce"].(string)
 	if v, ok := info["name"]; ok {
@@ -104,7 +104,7 @@ func DecodeTorrent(filename string) (*Meta, error) {
 	return &m, nil
 }
 
-func (m *Meta) InfoHash() ([20]byte, error) {
+func (m *FileMeta) InfoHash() ([20]byte, error) {
 	var info map[string]interface{}
 	if len(m.Files) == 0 {
 		info = map[string]interface{}{
