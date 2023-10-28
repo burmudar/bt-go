@@ -1,4 +1,4 @@
-package btencoding
+package encoding
 
 import (
 	"fmt"

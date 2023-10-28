@@ -9,10 +9,12 @@ import (
 	//bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/btencoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 )
 
-func printMetaInfo(m *btencoding.FileMeta) {
+func printMetaInfo(m *types.FileMeta) {
 	fmt.Printf("Tracker URL: %s\n", m.Announce)
 	if len(m.Files) == 0 {
 		fmt.Printf("Length: %d\n", m.Length)
@@ -22,7 +24,7 @@ func printMetaInfo(m *btencoding.FileMeta) {
 		}
 	}
 
-	hash, err := m.InfoHash()
+	hash, err := bt.InfoHash(m)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "calculating info hash error: %v", err)
 	}
@@ -42,8 +44,8 @@ func main() {
 		{
 			value := os.Args[2]
 
-			r := btencoding.NewBencodeReader(value)
-			if result, err := btencoding.DecodeBencode(r); err == nil {
+			r := encoding.NewBencodeReader(value)
+			if result, err := encoding.DecodeBencode(r); err == nil {
 				r, err := json.Marshal(result)
 				if err != nil {
 					fmt.Printf("marshalling faliure: %v\n", err)
@@ -58,7 +60,7 @@ func main() {
 	case "info":
 		{
 			filename := os.Args[2]
-			t, err := btencoding.DecodeTorrent(filename)
+			t, err := encoding.DecodeTorrent(filename)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "failed to read torrent %q: %v", os.Args[2], err)
 			}

@@ -1,35 +1,19 @@
-package btencoding
+package encoding
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"unicode"
+
+	bt "github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 	//"github.com/jackpal/bencode-go"
 )
 
-type FileInfo struct {
-	Length int
-	Paths  []string
-}
-
-type FileMeta struct {
-	Announce    string
-	Name        string
-	PieceLength int
-	Pieces      []string
-	Length      int
-	Files       []*FileInfo
-	Hash        []byte
-	RawInfo     map[string]interface{}
-}
-
-func newFileInfo(value map[string]interface{}) *FileInfo {
-	var f FileInfo
+func newFileInfo(value map[string]interface{}) *bt.FileInfo {
+	var f bt.FileInfo
 
 	f.Length = value["length"].(int)
 	paths := []string{}
@@ -41,7 +25,7 @@ func newFileInfo(value map[string]interface{}) *FileInfo {
 	return &f
 }
 
-func DecodeTorrent(filename string) (*FileMeta, error) {
+func DecodeTorrent(filename string) (*bt.FileMeta, error) {
 	raw, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -62,7 +46,7 @@ func DecodeTorrent(filename string) (*FileMeta, error) {
 		return nil, fmt.Errorf("info dict not found")
 	}
 
-	var m FileMeta
+	var m bt.FileMeta
 	m.RawInfo = info
 	m.Announce = dict["announce"].(string)
 	if v, ok := info["name"]; ok {
@@ -92,7 +76,7 @@ func DecodeTorrent(filename string) (*FileMeta, error) {
 	if v, ok := info["length"]; ok {
 		m.Length = v.(int)
 	} else {
-		m.Files = make([]*FileInfo, 0)
+		m.Files = make([]*bt.FileInfo, 0)
 		fileList := info["files"].([]interface{})
 
 		for _, item := range fileList {
@@ -102,32 +86,6 @@ func DecodeTorrent(filename string) (*FileMeta, error) {
 	}
 
 	return &m, nil
-}
-
-func (m *FileMeta) InfoHash() ([20]byte, error) {
-	var info map[string]interface{}
-	if len(m.Files) == 0 {
-		info = map[string]interface{}{
-			"name":         m.Name,
-			"length":       m.Length,
-			"piece length": m.PieceLength,
-			"pieces":       strings.Join(m.Pieces, ""),
-		}
-	} else {
-		info = map[string]interface{}{
-			"name":         m.Name,
-			"piece length": m.PieceLength,
-			"pieces":       strings.Join(m.Pieces, ""),
-			"files":        m.Files,
-		}
-	}
-
-	w := NewBenEncoder()
-	data, err := w.encode(info)
-	if err != nil {
-		return [20]byte{}, err
-	}
-	return sha1.Sum(data), nil
 }
 
 func DecodeDict(r *BencodeReader) (interface{}, error) {

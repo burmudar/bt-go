@@ -1,4 +1,4 @@
-package btencoding
+package encoding
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ func NewBenEncoder() *BenEncoder {
 	}
 }
 
-func (b *BenEncoder) encode(value interface{}) ([]byte, error) {
+func (b *BenEncoder) Encode(value interface{}) ([]byte, error) {
 
 	switch v := value.(type) {
 	case string:
@@ -37,7 +37,7 @@ func (b *BenEncoder) encode(value interface{}) ([]byte, error) {
 func (b *BenEncoder) encodeList(list []interface{}) {
 	fmt.Fprintf(b.buf, "l")
 	for _, i := range list {
-		b.encode(i)
+		b.Encode(i)
 	}
 	fmt.Fprintf(b.buf, "e")
 }
@@ -54,12 +54,12 @@ func (b *BenEncoder) encodeDict(dict map[string]interface{}) {
 
 	for _, k := range keys {
 		if k != "" {
-			b.encode(k)
+			b.Encode(k)
 		} else {
 			continue
 		}
 		if v, ok := dict[k]; ok {
-			b.encode(v)
+			b.Encode(v)
 		}
 	}
 	fmt.Fprintf(b.buf, "e")
