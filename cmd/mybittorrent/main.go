@@ -11,6 +11,7 @@ import (
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/tracker"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 )
 
@@ -36,6 +37,11 @@ func printMetaInfo(m *types.FileMeta) {
 	}
 }
 
+func FatalExit(msg string) {
+	fmt.Fprintln(os.Stderr, msg)
+	os.Exit(1)
+}
+
 func main() {
 	command := os.Args[1]
 
@@ -48,13 +54,11 @@ func main() {
 			if result, err := encoding.DecodeBencode(r); err == nil {
 				r, err := json.Marshal(result)
 				if err != nil {
-					fmt.Printf("marshalling faliure: %v\n", err)
-					os.Exit(1)
+					FatalExit(fmt.Sprintf("marshalling faliure: %v\n", err))
 				}
 				fmt.Println(string(r))
 			} else {
-				fmt.Printf("decoding faliure: %v\n", err)
-				os.Exit(1)
+				FatalExit(fmt.Sprintf("decoding faliure: %v\n", err))
 			}
 		}
 	case "info":
@@ -62,14 +66,36 @@ func main() {
 			filename := os.Args[2]
 			t, err := encoding.DecodeTorrent(filename)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to read torrent %q: %v", os.Args[2], err)
+				FatalExit(fmt.Sprintf("failed to read torrent %q: %v", os.Args[2], err))
 			}
 			printMetaInfo(t)
 		}
+
+	case "peers":
+		{
+			filename := os.Args[2]
+			t, err := encoding.DecodeTorrent(filename)
+			if err != nil {
+				FatalExit(fmt.Sprintf("failed to read torrent %q: %v", os.Args[2], err))
+			}
+
+			client := tracker.NewClient()
+			req, err := tracker.NewPeerRequest("00112233445566778899", 6881, t)
+			if err != nil {
+				FatalExit(fmt.Sprintf("failed to create peer request: %v", err))
+			}
+			resp, err := client.PeersRequest(req)
+			if err != nil {
+				FatalExit(fmt.Sprintf("peers request failure: %v", err))
+			}
+
+			for _, p := range resp.Peers {
+				fmt.Printf("%s:%d\n", p.IP.String(), p.Port)
+			}
+		}
 	default:
 		{
-			fmt.Println("Unknown command: " + command)
-			os.Exit(1)
+			FatalExit("Unknown command: " + command)
 		}
 	}
 

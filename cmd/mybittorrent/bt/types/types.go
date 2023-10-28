@@ -1,6 +1,9 @@
 package types
 
-import "strings"
+import (
+	"net"
+	"strings"
+)
 
 type FileInfo struct {
 	Length int
@@ -16,6 +19,11 @@ type FileMeta struct {
 	Files       []*FileInfo
 	Hash        []byte
 	RawInfo     map[string]interface{}
+}
+
+type Peer struct {
+	IP   net.IP
+	Port int
 }
 
 func (m *FileMeta) InfoDict() map[string]interface{} {
