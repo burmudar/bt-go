@@ -109,6 +109,55 @@ func TestDecodeNestedLists(t *testing.T) {
 }
 
 func TestDecodeDict(t *testing.T) {
+	tt := []struct {
+		name     string
+		value    string
+		expected map[string]interface{}
+	}{
+		{
+			"empty dict - de",
+			"de",
+			map[string]interface{}{},
+		},
+		{
+			"le with 3 elements",
+			"d5:item15:item25:item3i3ee",
+			map[string]interface{}{
+				"item1": "item2",
+				"item3": 3,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			r := NewBencodeReader(tc.value)
+			value, err := DecodeDict(r)
+			if err != nil {
+				t.Fatalf("unexpected error decoding dict: %v", err)
+			}
+
+			dict, ok := value.(map[string]interface{})
+			if !ok {
+				t.Fatal("failed to cast value to dict")
+			}
+			if len(dict) != len(tc.expected) {
+				t.Errorf("expected dict of length %d got %d", len(dict), len(tc.expected))
+			}
+			for k, v := range tc.expected {
+				dictValue, ok := dict[k]
+				if !ok {
+					t.Fatalf("expected %q key to exist in dict", k)
+				}
+
+				if reflect.TypeOf(v) != reflect.TypeOf(dictValue) {
+					t.Errorf("types differ: expected %T, got %T", v, dictValue)
+				} else if v != dictValue {
+					t.Errorf("incorrect values: expected %v got %v", v, dictValue)
+				}
+			}
+		})
+	}
 }
 
 func TestDecodeBencode(t *testing.T) {}
