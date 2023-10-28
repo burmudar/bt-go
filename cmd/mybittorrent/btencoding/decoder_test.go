@@ -222,3 +222,6 @@ func TestDecodeNestedDicts(t *testing.T) {
 }
 
 func TestDecodeBencode(t *testing.T) {}
+
+// TODO(burmudar): add torrent file tests
+// TODO(burmudar): add test where pieces contain null bytes
