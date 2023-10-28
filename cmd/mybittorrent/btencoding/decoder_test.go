@@ -160,4 +160,65 @@ func TestDecodeDict(t *testing.T) {
 	}
 }
 
+func TestDecodeNestedDicts(t *testing.T) {
+	tt := []struct {
+		name         string
+		value        string
+		nesting      int
+		lastExpected map[string]interface{}
+	}{
+		{
+			"nesting 2 levels deep",
+			"d4:nestdee",
+			1,
+			map[string]interface{}{},
+		},
+		{
+			"nesting 3 levels deep",
+			"d4:nestd4:nestd4:nestd1:ai1e1:bi2e1:ci3eeee",
+			3,
+			map[string]interface{}{
+				"a": 1,
+				"b": 2,
+				"c": 3,
+			},
+		},
+	}
+
+	for _, tc := range tt {
+		r := NewBencodeReader(tc.value)
+		value, err := DecodeDict(r)
+		if err != nil {
+			t.Fatalf("failed to decode dict %q: %v", tc.value, err)
+		}
+
+		dict, ok := value.(map[string]interface{})
+		if !ok {
+			t.Fatalf("failed to cast decoded value to list: %v", value)
+		}
+
+		for tc.nesting > 0 {
+			dict = dict["nest"].(map[string]interface{})
+			tc.nesting--
+		}
+
+		if len(dict) != len(tc.lastExpected) {
+			t.Errorf("expected last nested list to have %d elements but got %d", len(tc.lastExpected), len(dict))
+		}
+
+		for k, v := range tc.lastExpected {
+			dictValue, ok := dict[k]
+			if !ok {
+				t.Fatalf("expected %q key to exist in dict", k)
+			}
+
+			if reflect.TypeOf(v) != reflect.TypeOf(dictValue) {
+				t.Errorf("types differ: expected %T, got %T", v, dictValue)
+			} else if v != dictValue {
+				t.Errorf("incorrect values: expected %v got %v", v, dictValue)
+			}
+		}
+	}
+}
+
 func TestDecodeBencode(t *testing.T) {}
