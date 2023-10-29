@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 )
@@ -61,15 +60,11 @@ func NewClient() *TrackerClient {
 }
 
 func NewPeerRequest(peerID string, port int, m *types.FileMeta) (*PeersRequest, error) {
-	infoHash, err := bt.InfoHash(m)
-	if err != nil {
-		return nil, err
-	}
 	return &PeersRequest{
 		Announce: m.Announce,
 		PeerID:   peerID,
 		Port:     port,
-		InfoHash: infoHash,
+		InfoHash: m.Hash,
 		Left:     m.Length,
 		Compact:  1,
 	}, nil

@@ -2,6 +2,7 @@ package encoding
 
 import (
 	"bytes"
+	"crypto/sha1"
 	"errors"
 	"fmt"
 	"io"
@@ -85,7 +86,21 @@ func DecodeTorrent(filename string) (*bt.FileMeta, error) {
 		}
 	}
 
+	m.Hash, err = hash(m.InfoDict())
+	if err != nil {
+		return nil, err
+	}
+
 	return &m, nil
+}
+
+func hash(v map[string]interface{}) ([20]byte, error) {
+	w := NewBenEncoder()
+	h, err := w.Encode(v)
+	if err != nil {
+		return [20]byte{}, err
+	}
+	return sha1.Sum(h), nil
 }
 
 func DecodeDict(r *BencodeReader) (interface{}, error) {

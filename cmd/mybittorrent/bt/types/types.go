@@ -1,7 +1,9 @@
 package types
 
 import (
+	"fmt"
 	"net"
+	"strconv"
 	"strings"
 )
 
@@ -17,13 +19,40 @@ type FileMeta struct {
 	Pieces      []string
 	Length      int
 	Files       []*FileInfo
-	Hash        []byte
+	Hash        [20]byte
 	RawInfo     map[string]interface{}
 }
 
 type Peer struct {
 	IP   net.IP
 	Port int
+}
+
+func ParsePeer(v string) (*Peer, error) {
+	parts := strings.Split(v, ":")
+
+	if len(parts) < 1 {
+		return nil, fmt.Errorf("malformed peer value - expected IP:PORT format, got %s", v)
+	}
+
+	port, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("malformed peer value - cannot convert port value %q", parts[1])
+	}
+
+	return &Peer{
+		IP:   net.ParseIP(parts[0]),
+		Port: port,
+	}, nil
+}
+
+func (p *Peer) String() string {
+	return fmt.Sprintf("%s:%d", p.IP.String(), p.Port)
+}
+
+type PeerSpec struct {
+	Peers    []*Peer
+	Interval int
 }
 
 func (m *FileMeta) InfoDict() map[string]interface{} {
