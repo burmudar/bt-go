@@ -13,14 +13,15 @@ type FileInfo struct {
 }
 
 type FileMeta struct {
-	Announce    string
-	Name        string
-	PieceLength int
-	Pieces      []string
-	Length      int
-	Files       []*FileInfo
-	Hash        [20]byte
-	RawInfo     map[string]interface{}
+	Announce     string
+	AnnounceList []string
+	Name         string
+	PieceLength  int
+	Pieces       []string
+	Length       int
+	Files        []*FileInfo
+	Hash         [20]byte
+	RawInfo      map[string]interface{}
 }
 
 type Peer struct {

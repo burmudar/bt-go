@@ -5,11 +5,15 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 )
 
-const BitTorrentProtocol = "BitTorrent protocol"
+const (
+	BitTorrentProtocol = "BitTorrent protocol"
+	HandshakeLength    = 1 + 19 + 20 + 20 // length + protocol string + hash + peerid
+)
 
 type Client struct {
 	PeerID string
@@ -39,6 +43,9 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 }
 
 func decodeHandshake(data []byte) (*Handshake, error) {
+	if len(data) < HandshakeLength {
+		return nil, fmt.Errorf("malformed handshake - expected length %d got %d", HandshakeLength, len(data))
+	}
 	buf := bytes.NewBuffer(data)
 
 	b, err := buf.ReadByte()
@@ -51,7 +58,6 @@ func decodeHandshake(data []byte) (*Handshake, error) {
 		return nil, fmt.Errorf("incorrect length - got %d", length)
 	}
 
-	// 20 because that is the max of any part of the handshake
 	part := buf.Next(length)
 	proto := string(part)
 	if proto != BitTorrentProtocol {
@@ -103,15 +109,19 @@ func (c *Client) DoHandshake(m *types.FileMeta, p *types.Peer) (*Handshake, erro
 
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
+	fmt.Fprintln(os.Stderr, "writing handshake")
 	if _, err = rw.Write(data); err != nil {
 		return nil, fmt.Errorf("failed to send data: %w", err)
 	}
+	fmt.Fprintln(os.Stderr, "sending handshake")
 	rw.Flush()
 
-	resp := [100]byte{}
+	resp := [1024]byte{}
+	fmt.Fprintln(os.Stderr, "reading handshake response")
 	if _, err := rw.Read(resp[:]); err != nil {
 		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
 
+	fmt.Fprintln(os.Stderr, "decoding handshake response")
 	return decodeHandshake(resp[:])
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
@@ -55,7 +56,10 @@ type PeersResponse struct {
 
 func NewClient() *TrackerClient {
 	return &TrackerClient{
-		client: http.DefaultClient,
+		client: &http.Client{
+			CheckRedirect: nil, Jar: nil,
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -118,6 +122,10 @@ func (t *TrackerClient) PeersRequest(treq TrackerRequest) (*PeersResponse, error
 		return nil, err
 	}
 
+	if resp == nil {
+		return nil, fmt.Errorf("request failed - got nil response")
+	}
+
 	var data []byte
 	if resp.StatusCode == 200 {
 		var err error
@@ -148,6 +156,8 @@ func decodePeersResponse(d []byte) (*PeersResponse, error) {
 	if !ok {
 		return nil, fmt.Errorf("failed to cast value of %T to dictionary", v)
 	}
+
+	println("D", dict)
 
 	rawErrReason, ok := dict["failure reason"]
 	if ok {

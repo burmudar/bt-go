@@ -19,6 +19,9 @@ const PeerID = "00112233445566778899"
 
 func printMetaInfo(m *types.FileMeta) {
 	fmt.Printf("Tracker URL: %s\n", m.Announce)
+	if len(m.AnnounceList) > 0 {
+		fmt.Printf("AnnounceList:\n%s\n", strings.Join(m.AnnounceList, "\n"))
+	}
 	if len(m.Files) == 0 {
 		fmt.Printf("Length: %d\n", m.Length)
 	} else {
@@ -43,7 +46,18 @@ func GetPeers(m *types.FileMeta) (*types.PeerSpec, error) {
 	}
 	resp, err := client.PeersRequest(req)
 	if err != nil {
-		return nil, fmt.Errorf("peers request failure: %v", err)
+		// TODO(burmudar): look into using this more
+		if len(m.AnnounceList) > 0 {
+			for i := 1; i <= len(m.AnnounceList) && (resp == nil && err != nil); i++ {
+				req.Announce = m.AnnounceList[i]
+				resp, err = client.PeersRequest(req)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("peers request failure: %v", err)
+			}
+		} else {
+			return nil, fmt.Errorf("peers request failure: %v", err)
+		}
 	}
 
 	return &types.PeerSpec{

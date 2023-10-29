@@ -50,6 +50,17 @@ func DecodeTorrent(filename string) (*bt.FileMeta, error) {
 	var m bt.FileMeta
 	m.RawInfo = info
 	m.Announce = dict["announce"].(string)
+
+	if list, ok := dict["announce-list"].([]interface{}); ok {
+		m.AnnounceList = make([]string, 0)
+		for _, lvalue := range list {
+			inner := lvalue.([]interface{})
+			for _, v := range inner {
+				m.AnnounceList = append(m.AnnounceList, v.(string))
+			}
+		}
+	}
+
 	if v, ok := info["name"]; ok {
 		m.Name = v.(string)
 	}
