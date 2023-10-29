@@ -2,12 +2,12 @@ package tracker
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt"
@@ -123,17 +123,26 @@ func (t *TrackerClient) PeersRequest(treq TrackerRequest) (*PeersResponse, error
 		return nil, err
 	}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+	var data []byte
+	if resp.StatusCode == 200 {
+		var err error
+		data, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+	} else {
+		return nil, fmt.Errorf("request failure - status code: %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
 
 	presp, err := decodePeersResponse(data)
 	return presp, err
 }
 
 func decodePeersResponse(d []byte) (*PeersResponse, error) {
+	if len(d) == 0 {
+		return nil, fmt.Errorf("cannot decode peers response with empty data")
+	}
 	r := encoding.NewBencodeReader(string(d))
 	v, err := encoding.DecodeBencode(r)
 	if err != nil {
@@ -165,22 +174,21 @@ func decodePeersResponse(d []byte) (*PeersResponse, error) {
 	// Each peer is represented using 6 bytes.
 	// The first 4 bytes are the peer's IP address and the last 2 bytes are the peer's port number.
 	peerData := rawPeers.(string)
-	br := bytes.NewReader([]byte(peerData))
+	buf := bytes.NewBufferString(peerData)
 
-	var peerBuf [6]byte
+	var section [6]byte
 	peers := []*types.Peer{}
 	var readErr error
 	for readErr != io.EOF && readErr == nil {
-		_, readErr = br.Read(peerBuf[:])
+		_, readErr = buf.Read(section[:])
 
-		port, err := strconv.Atoi(string(peerBuf[4:6]))
-		if err != nil {
-			return nil, fmt.Errorf("error converting port bytes to int: %v", err)
-		}
-
+		// We use BigEndian and binary here because:
+		// - by convention that is network layout of bytes
+		// - Port is  represented by 2 bytes
+		port := binary.BigEndian.Uint16(section[4:])
 		peers = append(peers, &types.Peer{
-			IP:   net.IPv4(peerBuf[0], peerBuf[1], peerBuf[2], peerBuf[3]),
-			Port: port,
+			IP:   net.IPv4(section[0], section[1], section[2], section[3]),
+			Port: int(port),
 		})
 	}
 

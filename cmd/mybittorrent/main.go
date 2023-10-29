@@ -89,8 +89,13 @@ func main() {
 				FatalExit(fmt.Sprintf("peers request failure: %v", err))
 			}
 
+			total := 10
 			for _, p := range resp.Peers {
 				fmt.Printf("%s:%d\n", p.IP.String(), p.Port)
+				total--
+				if total == 0 {
+					break
+				}
 			}
 		}
 	default:
