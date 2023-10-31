@@ -157,8 +157,6 @@ func decodePeersResponse(d []byte) (*PeersResponse, error) {
 		return nil, fmt.Errorf("failed to cast value of %T to dictionary", v)
 	}
 
-	println("D", dict)
-
 	rawErrReason, ok := dict["failure reason"]
 	if ok {
 		return nil, fmt.Errorf(rawErrReason.(string))

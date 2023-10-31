@@ -3,9 +3,10 @@ package peer
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"encoding/binary"
 	"fmt"
 	"net"
-	"os"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
 )
@@ -13,15 +14,79 @@ import (
 const (
 	BitTorrentProtocol = "BitTorrent protocol"
 	HandshakeLength    = 1 + 19 + 20 + 20 // length + protocol string + hash + peerid
+
+	PieceMsgID      = 7
+	BitFieldMsgID   = 5
+	InterestedMsgID = 2
+	UnchokeMsgID    = 1
 )
 
 type Client struct {
-	PeerID string
+	PeerID        string
+	Peer          *types.Peer
+	conn          net.Conn
+	bufrw         *bufio.ReadWriter
+	lastHandshake *Handshake
 }
 
 type Handshake struct {
 	PeerID string
 	Hash   [20]byte
+}
+
+type PeerMessage struct {
+	ID      uint
+	Length  uint32
+	Payload []byte
+}
+
+func decodeBitField(pmsg *PeerMessage) error   { return nil }
+func decodeInterested(pmsg *PeerMessage) error { return nil }
+func decodeUnchoke(pmsg *PeerMessage) error    { return nil }
+func decodePiece(pmsg *PeerMessage) error      { return nil }
+
+func (c *Client) readPeerMessage() (*PeerMessage, error) {
+	data := make([]byte, 5)
+	if err := c.recv(data); err != nil {
+		return nil, err
+	}
+
+	length := binary.BigEndian.Uint32(data[:4])
+	id := int(data[4])
+	data = make([]byte, length)
+	// we probably want to chunk recv this
+	if err := c.recv(data); err != nil {
+		return nil, err
+	}
+
+	return &PeerMessage{
+		ID:      uint(id),
+		Length:  length,
+		Payload: data,
+	}, nil
+}
+
+func processPeerMessage(msg *PeerMessage) error {
+	switch msg.ID {
+	case BitFieldMsgID:
+		{
+			return decodeBitField(msg)
+		}
+	case InterestedMsgID:
+		{
+			return decodeInterested(msg)
+		}
+	case UnchokeMsgID:
+		{
+			return decodeUnchoke(msg)
+		}
+	case PieceMsgID:
+		{
+			return decodePiece(msg)
+		}
+	}
+
+	return nil
 }
 
 func NewClient(peerID string) (*Client, error) {
@@ -88,16 +153,73 @@ func decodeHandshake(data []byte) (*Handshake, error) {
 
 }
 
-func (c *Client) DoHandshake(m *types.FileMeta, p *types.Peer) (*Handshake, error) {
-	tcpAddr, err := net.ResolveTCPAddr("tcp", p.String())
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve tcp address: %w", err)
+func (c *Client) Handshaked() bool {
+	return c.lastHandshake != nil
+}
+
+func (c *Client) DownloadPiece(m *types.FileMeta, piece int) error {
+	if !c.Handshaked() {
+		_, err := c.DoHandshake(m)
+		if err != nil {
+			return err
+		}
 	}
-	conn, err := net.DialTCP("tcp", nil, tcpAddr)
+	fmt.Println("read bitfield message...")
+	// bitfield
+	// TODO: think about retries?
+	msg, err := c.readPeerMessage()
+
+	fmt.Printf("ID: %d Length: %d Real: %d\n", msg.ID, msg.Length, len(msg.Payload))
+
+	return err
+}
+
+func (c *Client) Close() error {
+	return c.conn.Close()
+}
+
+func (c *Client) Connect(ctx context.Context, p *types.Peer) error {
+	fmt.Printf("connecting to: %s\n", p.String())
+	dialer := &net.Dialer{}
+	conn, err := dialer.DialContext(ctx, "tcp", p.String())
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %w", err)
+		return fmt.Errorf("failed to connect: %w", err)
 	}
-	defer conn.Close()
+	c.Peer = p
+	c.conn = conn
+	c.bufrw = bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+
+	fmt.Printf("connected to: %s\n", p.String())
+
+	return nil
+}
+
+func (c *Client) IsConnected() bool {
+	return c.conn != nil
+}
+
+func (c *Client) send(data []byte) error {
+	if _, err := c.bufrw.Write(data); err != nil {
+		return fmt.Errorf("send failure: %w", err)
+	}
+	c.bufrw.Flush()
+	return nil
+}
+
+func (c *Client) recv(data []byte) error {
+	if _, err := c.bufrw.Read(data[:]); err != nil {
+		return fmt.Errorf("receive failure: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) DoHandshake(m *types.FileMeta) (*Handshake, error) {
+	if !c.IsConnected() {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	fmt.Println("starting handshake ...")
 
 	data, err := encodeHandshake(&Handshake{
 		PeerID: c.PeerID,
@@ -106,22 +228,20 @@ func (c *Client) DoHandshake(m *types.FileMeta, p *types.Peer) (*Handshake, erro
 	if err != nil {
 		return nil, fmt.Errorf("encoding failure: %w", err)
 	}
-
-	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
-
-	fmt.Fprintln(os.Stderr, "writing handshake")
-	if _, err = rw.Write(data); err != nil {
-		return nil, fmt.Errorf("failed to send data: %w", err)
+	if err := c.send(data); err != nil {
+		return nil, err
 	}
-	fmt.Fprintln(os.Stderr, "sending handshake")
-	rw.Flush()
 
 	resp := [1024]byte{}
-	fmt.Fprintln(os.Stderr, "reading handshake response")
-	if _, err := rw.Read(resp[:]); err != nil {
-		return nil, fmt.Errorf("failed to read data: %w", err)
+	if err := c.recv(resp[:]); err != nil {
+		return nil, err
 	}
 
-	fmt.Fprintln(os.Stderr, "decoding handshake response")
-	return decodeHandshake(resp[:])
+	h, err := decodeHandshake(resp[:])
+	if err == nil {
+		c.lastHandshake = h
+	}
+	fmt.Println("handshake complete...")
+
+	return h, err
 }

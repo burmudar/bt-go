@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	//bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
@@ -134,7 +136,14 @@ func main() {
 				FatalExit("failed to create peer client: %v", err)
 			}
 
-			handshake, err := client.DoHandshake(t, p)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err = client.Connect(ctx, p); err != nil {
+				FatalExit("failed to connect to client: %v", err)
+			}
+			defer client.Close()
+
+			handshake, err := client.DoHandshake(t)
 			if err != nil {
 				FatalExit("%q handshake failed: %v", p.String(), err)
 			}
@@ -142,6 +151,37 @@ func main() {
 			fmt.Printf("Peer ID: %s\n", hex.EncodeToString([]byte(handshake.PeerID)))
 			fmt.Printf("Hash: %s\n", hex.EncodeToString([]byte(handshake.Hash[:])))
 
+		}
+	case "download_piece":
+		{
+			filename := os.Args[2]
+			t, err := encoding.DecodeTorrent(filename)
+			if err != nil {
+				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
+			}
+
+			peers, err := GetPeers(t)
+			if err != nil {
+				FatalExit("failed to get peers: %v", os.Args[2], err)
+
+			}
+
+			client, err := peer.NewClient(PeerID)
+			if err != nil {
+				FatalExit("failed to create peer client: %v", err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			if err = client.Connect(ctx, peers.Peers[3]); err != nil {
+				FatalExit("failed to connect to client: %v", err)
+			}
+			defer client.Close()
+
+			if err := client.DownloadPiece(t, 0); err != nil {
+				FatalExit("piece download failure: %v", err)
+			}
 		}
 	default:
 		{
