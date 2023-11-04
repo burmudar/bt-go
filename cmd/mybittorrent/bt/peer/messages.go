@@ -7,6 +7,7 @@ import (
 )
 
 const (
+	KeepAliveType     MessageType = 99
 	ChokeType         MessageType = 0
 	UnchokeType       MessageType = 1
 	InterestedType    MessageType = 2
@@ -15,7 +16,7 @@ const (
 	BitFieldType      MessageType = 5
 	RequestType       MessageType = 6
 	PieceType         MessageType = 7
-	CancelType        MessageType = 7
+	CancelType        MessageType = 8
 )
 
 type MessageType int
@@ -48,6 +49,16 @@ func (raw *RawMessage) Bytes() []byte {
 		copy(data[4:], raw.Payload)
 	}
 	return data
+}
+
+type KeepAlive struct{}
+
+func (k *KeepAlive) Type() MessageType { return KeepAliveType }
+func (k *KeepAlive) ToRaw() *RawMessage {
+	return &RawMessage{
+		ID:     uint(k.Type()),
+		Length: 0,
+	}
 }
 
 type Choke struct{}
@@ -113,7 +124,7 @@ type PieceRequest struct {
 
 func (r *PieceRequest) Type() MessageType { return RequestType }
 func (r *PieceRequest) ToRaw() *RawMessage {
-	data := []byte{}
+	data := make([]byte, 17)
 	binary.BigEndian.PutUint32(data, uint32(r.Index))
 	binary.BigEndian.PutUint32(data, uint32(r.Begin))
 	binary.BigEndian.PutUint32(data, uint32(r.Length))
@@ -124,7 +135,14 @@ func (r *PieceRequest) ToRaw() *RawMessage {
 	}
 }
 
-type PieceBlock struct{}
+type PieceBlock struct {
+	// Index is the zero index of the piece
+	Index int
+	// Begin is the zero based offset of with in the piece
+	Begin int
+	// Length is the length of the block in bytes
+	Data []byte
+}
 
 func (p *PieceBlock) Type() MessageType  { return PieceType }
 func (p *PieceBlock) ToRaw() *RawMessage { return nil }
@@ -142,7 +160,16 @@ func decodeBitField(msg *RawMessage) (*BitField, error) {
 }
 
 func decodeRequest(msg *RawMessage) (*PieceRequest, error) { return nil, nil }
-func decodePiece(msg *RawMessage) (*PieceBlock, error)     { return nil, nil }
+func decodePiece(msg *RawMessage) (*PieceBlock, error) {
+	var block PieceBlock
+
+	block.Index = int(binary.BigEndian.Uint32(msg.Payload[0:])) // 4 bytes
+	block.Begin = int(binary.BigEndian.Uint32(msg.Payload[4:])) // 4 bytes
+	blkLen := msg.Length - 8
+	block.Data = msg.Payload[8:blkLen]
+
+	return &block, nil
+}
 
 func decodeHandshake(data []byte) (*Handshake, error) {
 	if len(data) < HandshakeLength {
@@ -201,44 +228,6 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func encodeMessage(msg Message) ([]byte, error) {
-	var encoded []byte
-	switch msg.(type) {
-	case *Choke:
-		{
-		}
-	case *Unchoke:
-		{
-		}
-	case *Interested:
-		{
-			return nil, nil
-		}
-	case *NotInterested:
-		{
-			return nil, nil
-		}
-	case *Have:
-		{
-			return nil, ErrNotImplemented
-		}
-	case *BitField:
-		{
-			return nil, nil
-		}
-	case *PieceRequest:
-		{
-			return nil, ErrNotImplemented
-		}
-	case *PieceBlock:
-		{
-			return nil, nil
-		}
-	}
-
-	return encoded, nil
-}
-
 func decodeMessage(msg *RawMessage) (Message, error) {
 	switch MessageType(msg.ID) {
 	case ChokeType:
@@ -272,6 +261,10 @@ func decodeMessage(msg *RawMessage) (Message, error) {
 	case PieceType:
 		{
 			return decodePiece(msg)
+		}
+	case KeepAliveType:
+		{
+			return &KeepAlive{}, nil
 		}
 	}
 
