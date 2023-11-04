@@ -63,7 +63,7 @@ func NewClient() *TrackerClient {
 	}
 }
 
-func NewPeerRequest(peerID string, port int, m *types.FileMeta) (*PeersRequest, error) {
+func NewPeerRequest(peerID string, port int, m *types.Torrent) (*PeersRequest, error) {
 	return &PeersRequest{
 		Announce: m.Announce,
 		PeerID:   peerID,

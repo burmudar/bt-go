@@ -26,7 +26,7 @@ func newFileInfo(value map[string]interface{}) *bt.FileInfo {
 	return &f
 }
 
-func DecodeTorrent(filename string) (*bt.FileMeta, error) {
+func DecodeTorrent(filename string) (*bt.Torrent, error) {
 	raw, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func DecodeTorrent(filename string) (*bt.FileMeta, error) {
 		return nil, fmt.Errorf("info dict not found")
 	}
 
-	var m bt.FileMeta
+	var m bt.Torrent
 	m.RawInfo = info
 	m.Announce = dict["announce"].(string)
 

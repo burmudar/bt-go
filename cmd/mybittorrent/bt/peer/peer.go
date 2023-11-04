@@ -2,7 +2,6 @@ package peer
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -15,10 +14,6 @@ const (
 	BitTorrentProtocol = "BitTorrent protocol"
 	HandshakeLength    = 1 + 19 + 20 + 20 // length + protocol string + hash + peerid
 
-	PieceMsgID      = 7
-	BitFieldMsgID   = 5
-	InterestedMsgID = 2
-	UnchokeMsgID    = 1
 )
 
 type Client struct {
@@ -29,23 +24,12 @@ type Client struct {
 	lastHandshake *Handshake
 }
 
-type Handshake struct {
-	PeerID string
-	Hash   [20]byte
+func (c *Client) writeMessage(msg *RawMessage) error {
+	data := msg.Bytes()
+	return c.send(data)
 }
 
-type PeerMessage struct {
-	ID      uint
-	Length  uint32
-	Payload []byte
-}
-
-func decodeBitField(pmsg *PeerMessage) error   { return nil }
-func decodeInterested(pmsg *PeerMessage) error { return nil }
-func decodeUnchoke(pmsg *PeerMessage) error    { return nil }
-func decodePiece(pmsg *PeerMessage) error      { return nil }
-
-func (c *Client) readPeerMessage() (*PeerMessage, error) {
+func (c *Client) readMessage() (*RawMessage, error) {
 	data := make([]byte, 5)
 	if err := c.recv(data); err != nil {
 		return nil, err
@@ -59,34 +43,11 @@ func (c *Client) readPeerMessage() (*PeerMessage, error) {
 		return nil, err
 	}
 
-	return &PeerMessage{
+	return &RawMessage{
 		ID:      uint(id),
 		Length:  length,
 		Payload: data,
 	}, nil
-}
-
-func processPeerMessage(msg *PeerMessage) error {
-	switch msg.ID {
-	case BitFieldMsgID:
-		{
-			return decodeBitField(msg)
-		}
-	case InterestedMsgID:
-		{
-			return decodeInterested(msg)
-		}
-	case UnchokeMsgID:
-		{
-			return decodeUnchoke(msg)
-		}
-	case PieceMsgID:
-		{
-			return decodePiece(msg)
-		}
-	}
-
-	return nil
 }
 
 func NewClient(peerID string) (*Client, error) {
@@ -95,83 +56,8 @@ func NewClient(peerID string) (*Client, error) {
 	}, nil
 }
 
-func encodeHandshake(h *Handshake) ([]byte, error) {
-	var buf bytes.Buffer
-
-	buf.WriteByte(byte(19))
-	buf.Write([]byte(BitTorrentProtocol))
-	buf.Write(bytes.Repeat([]byte{0}, 8))
-	buf.Write(h.Hash[:])
-	buf.Write([]byte(h.PeerID))
-
-	return buf.Bytes(), nil
-}
-
-func decodeHandshake(data []byte) (*Handshake, error) {
-	if len(data) < HandshakeLength {
-		return nil, fmt.Errorf("malformed handshake - expected length %d got %d", HandshakeLength, len(data))
-	}
-	buf := bytes.NewBuffer(data)
-
-	b, err := buf.ReadByte()
-	if err != nil {
-		return nil, fmt.Errorf("length read failure: %w", err)
-	}
-
-	length := int(b)
-	if length != 19 {
-		return nil, fmt.Errorf("incorrect length - got %d", length)
-	}
-
-	part := buf.Next(length)
-	proto := string(part)
-	if proto != BitTorrentProtocol {
-		return nil, fmt.Errorf("incorrect protocol - expected %q got %q", BitTorrentProtocol, proto)
-	}
-
-	// skip 8 bytes ahead since that is reserved and we don't care yet about that
-	buf.Next(8)
-
-	if buf.Len()+20 > len(data) {
-		return nil, fmt.Errorf("not enough data in handshake - cannot read info_hash")
-	}
-	// read the info_hash
-	part = buf.Next(20)
-	var hash [20]byte
-	copy(hash[:], part[:])
-
-	if buf.Len()+20 > len(data) {
-		return nil, fmt.Errorf("not enough data in handshake - cannot read peer id")
-	}
-	// read the peerID
-	part = buf.Next(20)
-
-	return &Handshake{
-		PeerID: string(part[:]),
-		Hash:   hash,
-	}, nil
-
-}
-
 func (c *Client) Handshaked() bool {
 	return c.lastHandshake != nil
-}
-
-func (c *Client) DownloadPiece(m *types.FileMeta, piece int) error {
-	if !c.Handshaked() {
-		_, err := c.DoHandshake(m)
-		if err != nil {
-			return err
-		}
-	}
-	fmt.Println("read bitfield message...")
-	// bitfield
-	// TODO: think about retries?
-	msg, err := c.readPeerMessage()
-
-	fmt.Printf("ID: %d Length: %d Real: %d\n", msg.ID, msg.Length, len(msg.Payload))
-
-	return err
 }
 
 func (c *Client) Close() error {
@@ -214,7 +100,7 @@ func (c *Client) recv(data []byte) error {
 	return nil
 }
 
-func (c *Client) DoHandshake(m *types.FileMeta) (*Handshake, error) {
+func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -244,4 +130,80 @@ func (c *Client) DoHandshake(m *types.FileMeta) (*Handshake, error) {
 	fmt.Println("handshake complete...")
 
 	return h, err
+}
+
+func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
+	if !c.Handshaked() {
+		_, err := c.DoHandshake(m)
+		if err != nil {
+			return err
+		}
+	}
+	// 1. bitfield
+	// 2. interested
+	// 3. unchoke
+	// 4. request
+	// 5. piece
+	fmt.Println("read bitfield message...")
+	// bitfield
+	// TODO: think about retries?
+	raw, err := c.readMessage()
+	if err != nil {
+		return err
+	}
+	msg, err := decodeMessage(raw)
+	if err != nil {
+		return err
+	}
+
+	if msg.Type() != BitFieldType {
+		return fmt.Errorf("expected BitField msg but got ID %d", msg.Type())
+	}
+
+	c.writeMessage((&Interested{}).ToRaw())
+
+	raw, err = c.readMessage()
+	if err != nil {
+		return err
+	}
+	msg, err = decodeMessage(raw)
+	if err != nil {
+		return err
+	}
+	if msg.Type() != UnchokeType {
+		return fmt.Errorf("expected Unchoke msg but got ID %d", msg.Type())
+	}
+
+	chunkSize := 16 * 1024
+	blocks := make([][]byte, m.Length/chunkSize)
+
+	for i := 0; i < len(blocks); i++ {
+		req := PieceRequest{
+			Index:  i,
+			Begin:  i * chunkSize,
+			Length: chunkSize,
+		}
+
+		fmt.Printf("Requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
+		c.writeMessage(req.ToRaw())
+
+		retries := 3
+		for retries > 0 {
+			raw, err = c.readMessage()
+			if err != nil {
+				return err
+			}
+			msg, err = decodeMessage(raw)
+			if err != nil {
+				return err
+			}
+			if msg.Type() != PieceType {
+				fmt.Printf("expected PieceType msg but got ID %d\n", msg.Type())
+			}
+			retries--
+		}
+
+	}
+
+	return err
 }

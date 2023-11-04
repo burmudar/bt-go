@@ -19,7 +19,7 @@ import (
 
 const PeerID = "00112233445566778899"
 
-func printMetaInfo(m *types.FileMeta) {
+func printMetaInfo(m *types.Torrent) {
 	fmt.Printf("Tracker URL: %s\n", m.Announce)
 	if len(m.AnnounceList) > 0 {
 		fmt.Printf("AnnounceList:\n%s\n", strings.Join(m.AnnounceList, "\n"))
@@ -40,7 +40,7 @@ func printMetaInfo(m *types.FileMeta) {
 	}
 }
 
-func GetPeers(m *types.FileMeta) (*types.PeerSpec, error) {
+func GetPeers(m *types.Torrent) (*types.PeerSpec, error) {
 	client := tracker.NewClient()
 	req, err := tracker.NewPeerRequest(PeerID, 6881, m)
 	if err != nil {
@@ -163,7 +163,6 @@ func main() {
 			peers, err := GetPeers(t)
 			if err != nil {
 				FatalExit("failed to get peers: %v", os.Args[2], err)
-
 			}
 
 			client, err := peer.NewClient(PeerID)

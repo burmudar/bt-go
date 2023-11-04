@@ -12,7 +12,7 @@ type FileInfo struct {
 	Paths  []string
 }
 
-type FileMeta struct {
+type Torrent struct {
 	Announce     string
 	AnnounceList []string
 	Name         string
@@ -56,7 +56,7 @@ type PeerSpec struct {
 	Interval int
 }
 
-func (m *FileMeta) InfoDict() map[string]interface{} {
+func (m *Torrent) InfoDict() map[string]interface{} {
 	var info map[string]interface{}
 	if len(m.Files) == 0 {
 		info = map[string]interface{}{
