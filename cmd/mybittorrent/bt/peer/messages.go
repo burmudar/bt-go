@@ -7,19 +7,19 @@ import (
 )
 
 const (
-	KeepAliveType     MessageType = 99
-	ChokeType         MessageType = 0
-	UnchokeType       MessageType = 1
-	InterestedType    MessageType = 2
-	NotInterestedType MessageType = 3
-	HaveType          MessageType = 4
-	BitFieldType      MessageType = 5
-	RequestType       MessageType = 6
-	PieceType         MessageType = 7
-	CancelType        MessageType = 8
+	KeepAliveType     MessageTag = 99
+	ChokeType         MessageTag = 0
+	UnchokeType       MessageTag = 1
+	InterestedType    MessageTag = 2
+	NotInterestedType MessageTag = 3
+	HaveType          MessageTag = 4
+	BitFieldType      MessageTag = 5
+	RequestType       MessageTag = 6
+	PieceType         MessageTag = 7
+	CancelType        MessageTag = 8
 )
 
-type MessageType int
+type MessageTag int
 
 var ErrNotImplemented = fmt.Errorf("not implemented")
 var ErrUnknownMessage = fmt.Errorf("unknown message")
@@ -30,87 +30,87 @@ type Handshake struct {
 }
 
 type Message interface {
-	Type() MessageType
+	Tag() MessageTag
 	ToRaw() *RawMessage
 }
 
 type RawMessage struct {
-	ID      uint
+	Tag     uint
 	Length  uint32
 	Payload []byte
 }
 
 func (raw *RawMessage) Bytes() []byte {
-	data := make([]byte, raw.Length)
+	data := make([]byte, 4+1+len(raw.Payload))
 
-	binary.BigEndian.PutUint32(data, uint32(len(data)))
-	data[4] = byte(raw.ID)
+	binary.BigEndian.PutUint32(data, raw.Length)
+	data[4] = byte(raw.Tag)
 	if len(raw.Payload) > 0 {
-		copy(data[4:], raw.Payload)
+		copy(data[5:], raw.Payload)
 	}
 	return data
 }
 
 type KeepAlive struct{}
 
-func (k *KeepAlive) Type() MessageType { return KeepAliveType }
+func (k *KeepAlive) Tag() MessageTag { return KeepAliveType }
 func (k *KeepAlive) ToRaw() *RawMessage {
 	return &RawMessage{
-		ID:     uint(k.Type()),
+		Tag:    uint(k.Tag()),
 		Length: 0,
 	}
 }
 
 type Choke struct{}
 
-func (c *Choke) Type() MessageType { return ChokeType }
+func (c *Choke) Tag() MessageTag { return ChokeType }
 func (c *Choke) ToRaw() *RawMessage {
 	return &RawMessage{
-		ID:     uint(c.Type()),
+		Tag:    uint(c.Tag()),
 		Length: 5,
 	}
 }
 
 type Unchoke struct{}
 
-func (u *Unchoke) Type() MessageType { return UnchokeType }
+func (u *Unchoke) Tag() MessageTag { return UnchokeType }
 func (u *Unchoke) ToRaw() *RawMessage {
 	return &RawMessage{
-		ID:     uint(u.Type()),
-		Length: 5,
+		Tag:    uint(u.Tag()),
+		Length: 1,
 	}
 }
 
 type Interested struct{}
 
-func (i *Interested) Type() MessageType { return InterestedType }
+func (i *Interested) Tag() MessageTag { return InterestedType }
 func (i *Interested) ToRaw() *RawMessage {
 	return &RawMessage{
-		ID:     uint(i.Type()),
-		Length: 5,
+		Tag:    uint(i.Tag()),
+		Length: 1,
 	}
 }
 
 type NotInterested struct{}
 
-func (n *NotInterested) Type() MessageType { return NotInterestedType }
+func (n *NotInterested) Tag() MessageTag { return NotInterestedType }
 func (n *NotInterested) ToRaw() *RawMessage {
 	return &RawMessage{
-		ID:     uint(n.Type()),
-		Length: 5,
+		Tag:    uint(n.Tag()),
+		Length: 1,
 	}
 }
 
 type Have struct{}
 
-func (h *Have) Type() MessageType  { return HaveType }
+func (h *Have) Tag() MessageTag    { return HaveType }
 func (h *Have) ToRaw() *RawMessage { return nil }
 
 type BitField struct {
 	Field []byte
 }
 
-func (b *BitField) Type() MessageType  { return BitFieldType }
+func (b *BitField) Tag() MessageTag    { return BitFieldType }
 func (b *BitField) ToRaw() *RawMessage { return nil }
 
 type PieceRequest struct {
@@ -122,15 +122,15 @@ type PieceRequest struct {
 	Length int
 }
 
-func (r *PieceRequest) Type() MessageType { return RequestType }
+func (r *PieceRequest) Tag() MessageTag { return RequestType }
 func (r *PieceRequest) ToRaw() *RawMessage {
-	data := make([]byte, 17)
-	binary.BigEndian.PutUint32(data, uint32(r.Index))
-	binary.BigEndian.PutUint32(data, uint32(r.Begin))
-	binary.BigEndian.PutUint32(data, uint32(r.Length))
+	data := make([]byte, 12)
+	binary.BigEndian.PutUint32(data[0:4], uint32(r.Index))
+	binary.BigEndian.PutUint32(data[4:8], uint32(r.Begin))
+	binary.BigEndian.PutUint32(data[8:12], uint32(r.Length))
 	return &RawMessage{
-		ID:      uint(r.Type()),
-		Length:  uint32(len(data) + 1),
+		Tag:     uint(r.Tag()),
+		Length:  uint32(len(data)),
 		Payload: data,
 	}
 }
@@ -144,12 +144,12 @@ type PieceBlock struct {
 	Data []byte
 }
 
-func (p *PieceBlock) Type() MessageType  { return PieceType }
+func (p *PieceBlock) Tag() MessageTag    { return PieceType }
 func (p *PieceBlock) ToRaw() *RawMessage { return nil }
 
 type Cancel struct{}
 
-func (c *Cancel) Type() MessageType  { return CancelType }
+func (c *Cancel) Tag() MessageTag    { return CancelType }
 func (c *Cancel) HasPayload() bool   { return true }
 func (p *Cancel) ToRaw() *RawMessage { return nil }
 
@@ -160,13 +160,14 @@ func decodeBitField(msg *RawMessage) (*BitField, error) {
 }
 
 func decodeRequest(msg *RawMessage) (*PieceRequest, error) { return nil, nil }
+
 func decodePiece(msg *RawMessage) (*PieceBlock, error) {
 	var block PieceBlock
 
-	block.Index = int(binary.BigEndian.Uint32(msg.Payload[0:])) // 4 bytes
-	block.Begin = int(binary.BigEndian.Uint32(msg.Payload[4:])) // 4 bytes
-	blkLen := msg.Length - 8
-	block.Data = msg.Payload[8:blkLen]
+	block.Index = int(binary.BigEndian.Uint32(msg.Payload[0:4])) // 4 bytes
+	block.Begin = int(binary.BigEndian.Uint32(msg.Payload[4:8])) // 4 bytes
+	//blkLen := msg.Length - 8
+	block.Data = msg.Payload[8:]
 
 	return &block, nil
 }
@@ -229,7 +230,7 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 }
 
 func decodeMessage(msg *RawMessage) (Message, error) {
-	switch MessageType(msg.ID) {
+	switch MessageTag(msg.Tag) {
 	case ChokeType:
 		{
 			return &Choke{}, nil
@@ -268,5 +269,6 @@ func decodeMessage(msg *RawMessage) (Message, error) {
 		}
 	}
 
+	fmt.Printf("TAG: %d\n", msg.Tag)
 	return nil, ErrUnknownMessage
 }

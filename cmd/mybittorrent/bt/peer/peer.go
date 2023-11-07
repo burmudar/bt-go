@@ -27,7 +27,7 @@ type Client struct {
 
 func (c *Client) writeMessage(msg *RawMessage) error {
 	data := msg.Bytes()
-	fmt.Printf("type: %d bytes: %x\n", msg.ID, data)
+	fmt.Printf("type: %d bytes: %x\n", msg.Tag, data)
 	return c.send(data)
 }
 
@@ -40,44 +40,41 @@ func (c *Client) readMessage() (Message, error) {
 }
 
 func (c *Client) recvMessage() (*RawMessage, error) {
-	prefix := make([]byte, 8)
-	if n, err := c.recv(prefix); err != nil {
+	prefix := make([]byte, 5)
+	if _, err := c.recv(prefix); err != nil {
 		return nil, err
-	} else if n == 0 {
-		// keep alive
-		return &RawMessage{
-			ID:      uint(KeepAliveType),
-			Length:  0,
-			Payload: nil,
-		}, nil
 	}
 
 	fmt.Printf("Received bytes %b\n", prefix)
 
 	length := binary.BigEndian.Uint32(prefix[0:4])
 	fmt.Printf("Message Len: %d\n", length)
-	id := uint(prefix[4])
-
-	if length <= 2 {
+	if length == 0 {
 		return &RawMessage{
-			ID:      id,
+			Tag:     uint(KeepAliveType),
 			Length:  length,
 			Payload: nil,
 		}, nil
-
 	}
 
-	payload := make([]byte, length-2)
+	tag := uint(prefix[4])
+	msg := &RawMessage{
+		Tag:     tag,
+		Length:  length,
+		Payload: nil,
+	}
+
+	if msg.Tag == uint(KeepAliveType) || msg.Tag < uint(NotInterestedType) {
+		return msg, nil
+	}
+
+	msg.Payload = make([]byte, length)
 	// we probably want to chunk recv this
-	if _, err := c.recv(payload); err != nil {
+	if _, err := c.recv(msg.Payload); err != nil {
 		return nil, err
 	}
 
-	return &RawMessage{
-		ID:      id,
-		Length:  length,
-		Payload: payload,
-	}, nil
+	return msg, nil
 }
 
 func NewClient(peerID string) (*Client, error) {
@@ -182,10 +179,12 @@ func (c *Client) waitForUnchoke() error {
 				fmt.Println("reading msg")
 				if msg, err := c.readMessage(); err != nil {
 					return err
-				} else if msg.Type() != UnchokeType {
+				} else if msg.Tag() != UnchokeType {
 					fmt.Printf("waiting for unchoke - got %T\n", msg)
 				} else {
 					fmt.Printf("received unchoke - %T\n", msg)
+					ticker.Stop()
+					done.Stop()
 					return nil
 				}
 			}
@@ -217,8 +216,8 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 		return err
 	}
 
-	if msg.Type() != BitFieldType {
-		return fmt.Errorf("expected BitField msg but got ID %d", msg.Type())
+	if msg.Tag() != BitFieldType {
+		return fmt.Errorf("expected BitField msg but got ID %d", msg.Tag())
 	}
 
 	if err := c.waitForUnchoke(); err != nil {
@@ -230,20 +229,16 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 
 	fmt.Printf("need to request %d blocks for piece %d\n", len(blocks), pIndex)
 
-	for i := 0; i < len(blocks); i++ {
-		req := PieceRequest{
-			Index:  i,
-			Begin:  i * chunkSize,
-			Length: chunkSize,
-		}
-
-		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
-		c.writeMessage(req.ToRaw())
+	req := PieceRequest{
+		Index:  0,
+		Begin:  0,
+		Length: chunkSize,
 	}
 
-	blocksLeft := len(blocks)
-	for blocksLeft > 0 {
-		fmt.Printf("reading message (blocksLeft %d)\n", blocksLeft)
+	fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
+	c.writeMessage(req.ToRaw())
+
+	for {
 		msg, err := c.readMessage()
 		if err != nil {
 			return err
@@ -259,11 +254,9 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 		case *PieceBlock:
 			{
 				fmt.Printf("Block [%d] %d (%d)", m.Index, m.Begin, len(m.Data))
-				blocksLeft--
 			}
 
 		}
 	}
 
-	return err
 }
