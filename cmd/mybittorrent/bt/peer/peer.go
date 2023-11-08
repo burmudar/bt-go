@@ -45,10 +45,9 @@ func (c *Client) recvMessage() (*RawMessage, error) {
 		return nil, err
 	}
 
-	fmt.Printf("Received bytes %b\n", prefix)
+	fmt.Printf("Received bytes %x\n", prefix)
 
 	length := binary.BigEndian.Uint32(prefix[0:4])
-	fmt.Printf("Message Len: %d\n", length)
 	if length == 0 {
 		return &RawMessage{
 			Tag:     uint(KeepAliveType),
@@ -58,20 +57,19 @@ func (c *Client) recvMessage() (*RawMessage, error) {
 	}
 
 	tag := uint(prefix[4])
+	fmt.Printf("Message Tag: %d Len: %d\n", tag, length)
 	msg := &RawMessage{
 		Tag:     tag,
 		Length:  length,
 		Payload: nil,
 	}
 
-	if msg.Tag == uint(KeepAliveType) || msg.Tag < uint(NotInterestedType) {
-		return msg, nil
-	}
-
-	msg.Payload = make([]byte, length)
-	// we probably want to chunk recv this
-	if _, err := c.recv(msg.Payload); err != nil {
-		return nil, err
+	if length > 1 {
+		msg.Payload = make([]byte, length-1) // -1  because we don't want the message tag
+		// we probably want to chunk recv this
+		if _, err := c.recv(msg.Payload); err != nil {
+			return nil, err
+		}
 	}
 
 	return msg, nil
@@ -253,7 +251,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 			}
 		case *PieceBlock:
 			{
-				fmt.Printf("Block [%d] %d (%d)", m.Index, m.Begin, len(m.Data))
+				fmt.Printf("Block Index:%d Begin:%d Data Len:%d\n", m.Index, m.Begin, len(m.Data))
 			}
 
 		}

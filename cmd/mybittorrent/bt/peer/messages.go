@@ -42,6 +42,7 @@ type RawMessage struct {
 
 func (raw *RawMessage) Bytes() []byte {
 	data := make([]byte, 4+1+len(raw.Payload))
+	println(">> TAG", raw.Tag, len(data), len(raw.Payload), raw.Length)
 
 	binary.BigEndian.PutUint32(data, raw.Length)
 	data[4] = byte(raw.Tag)
@@ -67,7 +68,7 @@ func (c *Choke) Tag() MessageTag { return ChokeType }
 func (c *Choke) ToRaw() *RawMessage {
 	return &RawMessage{
 		Tag:    uint(c.Tag()),
-		Length: 5,
+		Length: 1,
 	}
 }
 
@@ -130,7 +131,7 @@ func (r *PieceRequest) ToRaw() *RawMessage {
 	binary.BigEndian.PutUint32(data[8:12], uint32(r.Length))
 	return &RawMessage{
 		Tag:     uint(r.Tag()),
-		Length:  uint32(len(data)),
+		Length:  12 + 1,
 		Payload: data,
 	}
 }
@@ -166,9 +167,8 @@ func decodePiece(msg *RawMessage) (*PieceBlock, error) {
 
 	block.Index = int(binary.BigEndian.Uint32(msg.Payload[0:4])) // 4 bytes
 	block.Begin = int(binary.BigEndian.Uint32(msg.Payload[4:8])) // 4 bytes
-	//blkLen := msg.Length - 8
-	block.Data = msg.Payload[8:]
 
+	block.Data = msg.Payload[8:]
 	return &block, nil
 }
 
