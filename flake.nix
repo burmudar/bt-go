@@ -2,7 +2,8 @@
   description = "Basic flake for go";
 
   inputs = {
-    nixpkgs = { url = "github:NixOS/nixpkgs/6eed87d4490ce045dda1091999d1e38605afb8ea"; };
+    # nixpkgs = { url = "github:NixOS/nixpkgs/6eed87d4490ce045dda1091999d1e38605afb8ea"; };
+    nixpkgs = { url = "github:NixOS/nixpkgs/"; };
     flake-utils = { url = "github:numtide/flake-utils"; };
   };
 
@@ -15,7 +16,7 @@
       {
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
-          go_1_16
+          go_1_19
           delve
           ];
         };
