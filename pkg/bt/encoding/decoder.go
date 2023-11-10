@@ -9,7 +9,7 @@ import (
 	"os"
 	"unicode"
 
-	bt "github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
+	bt "github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 	//"github.com/jackpal/bencode-go"
 )
 

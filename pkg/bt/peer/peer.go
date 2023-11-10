@@ -8,7 +8,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
 const (

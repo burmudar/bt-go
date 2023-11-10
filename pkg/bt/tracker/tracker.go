@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/encoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
 type TrackerClient struct {

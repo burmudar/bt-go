@@ -11,10 +11,10 @@ import (
 	//bencode "github.com/jackpal/bencode-go" // Available if you need it!
 	"os"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/encoding"
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/peer"
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/tracker"
-	"github.com/codecrafters-io/bittorrent-starter-go/cmd/mybittorrent/bt/types"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/encoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/peer"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/tracker"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
 const PeerID = "00112233445566778899"
