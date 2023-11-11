@@ -18,11 +18,13 @@ func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
 		end := start + max
 		if n, err := reader.Read(data[start:end]); err != nil {
 			if errors.Is(err, io.EOF) {
-				return size, err
+				return size, nil
 			} else {
 				return n, fmt.Errorf("read failure: %w", err)
 			}
 		} else {
+			// We need to read chunkcs since the buffer might not have all the data available. So we read 512 bytes
+			// and then adjust wheere we need to start to read the next chunk
 			start += n
 			size -= n
 		}
