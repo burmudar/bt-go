@@ -164,6 +164,7 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 func DecodeMessage(r *bufio.ReadWriter) (Message, error) {
 	msg, err := DecodeRawMessage(r)
 	if err != nil {
+		println("HERE 3")
 		return nil, err
 	}
 	switch MessageTag(msg.Tag) {

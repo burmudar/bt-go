@@ -194,10 +194,12 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
 		if err := c.send(data); err != nil {
+			println("HERE 1")
 			return nil, err
 		}
 		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
+			println("HERE 2")
 			return nil, err
 		}
 		switch m := msg.(type) {
