@@ -183,6 +183,17 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	chunkSize := 16 * 1024
 	pieceLen := int(math.Max(float64(m.PieceLength), float64(chunkSize)))
 	blockCount := pieceLen / chunkSize
+	// number of pieces
+	numPieces := m.Length / int(m.PieceLength)
+	lastBlockLength := 0
+	if pIndex+1 == numPieces {
+		lastPieceLength := m.Length % m.PieceLength
+		if lastPieceLength != 0 {
+			blockCount = int(math.Ceil(float64(lastPieceLength) / float64(chunkSize)))
+			lastBlockLength = lastPieceLength % chunkSize
+		}
+	}
+
 	blocks := make([]*PieceBlock, blockCount)
 	fmt.Printf("need to request %d blocks\n", blockCount)
 	for blockIndex := 0; blockIndex < blockCount; blockIndex++ {
@@ -190,6 +201,11 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 			Index:  pIndex,
 			Begin:  blockIndex * chunkSize,
 			Length: chunkSize,
+		}
+		if blockIndex == blockCount-1 && lastBlockLength != 0 {
+			fmt.Println("last piece - updating block")
+			// we're at the last block and this is part of a last block in the piece
+			req.Length = lastBlockLength
 		}
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
