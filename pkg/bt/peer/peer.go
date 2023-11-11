@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"math"
 	"net"
+	"sort"
 	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
@@ -81,7 +83,6 @@ func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
 		PeerID: c.PeerID,
 		Hash:   m.Hash,
 	})
-	println("handshake> ", len(data))
 	if err != nil {
 		return nil, fmt.Errorf("encoding failure: %w", err)
 	}
@@ -139,7 +140,22 @@ func (c *Client) waitForUnchoke() error {
 	}
 }
 
-func (c *Client) DownloadPiece(m *types.Torrent, pInde int) (*PieceBlock, error) {
+func assembleData(blocks []*PieceBlock, chunkSize int) []byte {
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].Begin < blocks[j].Begin
+	})
+
+	lastBlockSize := len(blocks[len(blocks)-1].Data)
+	// The last block may be smaller than the regular chunk size
+	result := make([]byte, 0, (len(blocks)-1)*chunkSize+lastBlockSize)
+	for _, block := range blocks {
+		result = append(result, block.Data...)
+	}
+
+	return result
+}
+
+func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, error) {
 	if !c.Handshaked() {
 		_, err := c.DoHandshake(m)
 		if err != nil {
@@ -166,21 +182,21 @@ func (c *Client) DownloadPiece(m *types.Torrent, pInde int) (*PieceBlock, error)
 	}
 
 	chunkSize := 16 * 1024
-	_ = make([][]byte, m.Length/chunkSize)
-
-	req := &PieceRequest{
-		Index:  0,
-		Begin:  0,
-		Length: chunkSize,
-	}
-
-	fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
-	data := EncodeMessage(req)
-	if err := c.send(data); err != nil {
-		return nil, err
-	}
-
-	for {
+	pieceLen := int(math.Max(float64(m.PieceLength), float64(chunkSize)))
+	blockCount := pieceLen / chunkSize
+	blocks := make([]*PieceBlock, blockCount)
+	fmt.Printf("need to request %d blocks\n", blockCount)
+	for blockIndex := 0; blockIndex < blockCount; blockIndex++ {
+		req := &PieceRequest{
+			Index:  pIndex,
+			Begin:  blockIndex * chunkSize,
+			Length: chunkSize,
+		}
+		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
+		data := EncodeMessage(req)
+		if err := c.send(data); err != nil {
+			return nil, err
+		}
 		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
 			return nil, err
@@ -195,9 +211,16 @@ func (c *Client) DownloadPiece(m *types.Torrent, pInde int) (*PieceBlock, error)
 			}
 		case *PieceBlock:
 			{
-				return m, nil
+				fmt.Printf("received block %d for piece %d - Begin: %d Length: %d\n", blockIndex, m.Index, m.Begin, len(m.Data))
+				blocks[blockIndex] = m
 			}
 		}
 	}
 
+	return &types.Piece{
+		Index: pIndex,
+		Peer:  *c.Peer,
+		Size:  chunkSize,
+		Data:  assembleData(blocks, chunkSize),
+	}, nil
 }

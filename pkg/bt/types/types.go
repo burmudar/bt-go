@@ -28,6 +28,12 @@ type Peer struct {
 	IP   net.IP
 	Port int
 }
+type Piece struct {
+	Index int
+	Peer  Peer
+	Size  int
+	Data  []byte
+}
 
 func ParsePeer(v string) (*Peer, error) {
 	parts := strings.Split(v, ":")

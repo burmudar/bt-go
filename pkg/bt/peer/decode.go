@@ -4,15 +4,28 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"io"
 )
 
 func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
-	if n, err := reader.Read(data[:]); err != nil {
-		return n, fmt.Errorf("read failure: %w", err)
-	} else {
-		return n, nil
+	size := len(data)
+	start := 0
+	for size > 0 {
+		if n, err := reader.Read(data[start:]); err != nil {
+			if errors.Is(err, io.EOF) {
+				return size, err
+			} else {
+				return n, fmt.Errorf("read failure: %w", err)
+			}
+		} else {
+			start = n
+			size -= n
+		}
 	}
+
+	return size, nil
 }
 
 func DecodeRawMessage(r *bufio.ReadWriter) (*RawMessage, error) {
@@ -39,9 +52,12 @@ func DecodeRawMessage(r *bufio.ReadWriter) (*RawMessage, error) {
 
 	if length > 1 {
 		msg.Payload = make([]byte, length-1) // -1  because we don't want the message tag
-		// we probably want to chunk recv this
-		if _, err := read(r, msg.Payload); err != nil {
-			return nil, err
+		if n, err := read(r, msg.Payload); err != nil {
+			if errors.Is(err, io.EOF) {
+				println("EOF reached while reading payload - read", n)
+			} else {
+				return nil, err
+			}
 		}
 	}
 

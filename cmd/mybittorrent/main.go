@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -186,17 +187,18 @@ func main() {
 			}
 			defer client.Close()
 
+			fmt.Printf("Downloading Piece %d from peer %s [%x] (%d)\n", pieceIdx, client.Peer.String(), t.Pieces[pieceIdx], t.PieceLength)
 			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {
 				FatalExit("piece download failure: %v", err)
 			} else {
-				fmt.Printf("received piece %d with %d data\n", b.Index, len(b.Data))
+				fmt.Printf("Piece %d downloaded successfully from peer %s [%x] (%d)\n", pieceIdx, client.Peer.String(), sha1.Sum(b.Data), len(b.Data))
 				fd, err := os.Create(dst)
 				if err != nil {
 					FatalExit("failed to create destination file: %v", err)
 				}
 				defer fd.Close()
 				io.Copy(fd, bytes.NewReader(b.Data))
-				fmt.Printf("wrote %d bytes to %s\n", len(b.Data), dst)
+				fmt.Printf("Piece %d downloaded to %s\n", b.Index, dst)
 			}
 		}
 	default:
