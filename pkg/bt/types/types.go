@@ -31,6 +31,7 @@ type Peer struct {
 
 func ParsePeer(v string) (*Peer, error) {
 	parts := strings.Split(v, ":")
+	println(v)
 
 	if len(parts) < 1 {
 		return nil, fmt.Errorf("malformed peer value - expected IP:PORT format, got %s", v)

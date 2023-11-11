@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -154,8 +157,13 @@ func main() {
 		}
 	case "download_piece":
 		{
-			filename := os.Args[2]
-			t, err := encoding.DecodeTorrent(filename)
+			dst := os.Args[3]
+			torrentFile := os.Args[4]
+			pieceIdx, err := strconv.Atoi(os.Args[5])
+			if err != nil {
+				FatalExit("failed to convert piece index to integer: %v", err)
+			}
+			t, err := encoding.DecodeTorrent(torrentFile)
 			if err != nil {
 				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
 			}
@@ -173,13 +181,22 @@ func main() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 
-			if err = client.Connect(ctx, peers.Peers[3]); err != nil {
+			if err = client.Connect(ctx, peers.Peers[0]); err != nil {
 				FatalExit("failed to connect to client: %v", err)
 			}
 			defer client.Close()
 
-			if err := client.DownloadPiece(t, 0); err != nil {
+			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {
 				FatalExit("piece download failure: %v", err)
+			} else {
+				fmt.Printf("received piece %d with %d data\n", b.Index, len(b.Data))
+				fd, err := os.Create(dst)
+				if err != nil {
+					FatalExit("failed to create destination file: %v", err)
+				}
+				defer fd.Close()
+				io.Copy(fd, bytes.NewReader(b.Data))
+				fmt.Printf("wrote %d bytes to %s\n", len(b.Data), dst)
 			}
 		}
 	default:

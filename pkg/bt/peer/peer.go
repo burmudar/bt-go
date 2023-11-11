@@ -3,7 +3,6 @@ package peer
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
 	"fmt"
 	"net"
 	"time"
@@ -25,54 +24,9 @@ type Client struct {
 	lastHandshake *Handshake
 }
 
-func (c *Client) writeMessage(msg *RawMessage) error {
-	data := msg.Bytes()
-	fmt.Printf("type: %d bytes: %x\n", msg.Tag, data)
+func (c *Client) writeMessage(msg Message) error {
+	data := EncodeMessage(msg)
 	return c.send(data)
-}
-
-func (c *Client) readMessage() (Message, error) {
-	raw, err := c.recvMessage()
-	if err != nil {
-		return nil, err
-	}
-	return decodeMessage(raw)
-}
-
-func (c *Client) recvMessage() (*RawMessage, error) {
-	prefix := make([]byte, 5)
-	if _, err := c.recv(prefix); err != nil {
-		return nil, err
-	}
-
-	fmt.Printf("Received bytes %x\n", prefix)
-
-	length := binary.BigEndian.Uint32(prefix[0:4])
-	if length == 0 {
-		return &RawMessage{
-			Tag:     uint(KeepAliveType),
-			Length:  length,
-			Payload: nil,
-		}, nil
-	}
-
-	tag := uint(prefix[4])
-	fmt.Printf("Message Tag: %d Len: %d\n", tag, length)
-	msg := &RawMessage{
-		Tag:     tag,
-		Length:  length,
-		Payload: nil,
-	}
-
-	if length > 1 {
-		msg.Payload = make([]byte, length-1) // -1  because we don't want the message tag
-		// we probably want to chunk recv this
-		if _, err := c.recv(msg.Payload); err != nil {
-			return nil, err
-		}
-	}
-
-	return msg, nil
 }
 
 func NewClient(peerID string) (*Client, error) {
@@ -98,7 +52,7 @@ func (c *Client) Connect(ctx context.Context, p *types.Peer) error {
 	}
 	c.Peer = p
 	c.conn = conn
-	c.bufrw = bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+	c.bufrw = bufio.NewReadWriter(bufio.NewReader(c.conn), bufio.NewWriter(c.conn))
 
 	fmt.Printf("connected to: %s\n", p.String())
 
@@ -110,23 +64,10 @@ func (c *Client) IsConnected() bool {
 }
 
 func (c *Client) send(data []byte) error {
-	if _, err := c.bufrw.Write(data); err != nil {
+	if _, err := c.conn.Write(data); err != nil {
 		return fmt.Errorf("send failure: %w", err)
 	}
-	c.bufrw.Flush()
 	return nil
-}
-
-func (c *Client) recv(data []byte) (int, error) {
-	fmt.Printf("receiving %d buffered %d\n", len(data), c.bufrw.Reader.Buffered())
-	if len(data) == 0 {
-		return 0, nil
-	}
-	if n, err := c.bufrw.Read(data[:]); err != nil {
-		return n, fmt.Errorf("receive failure: %w", err)
-	} else {
-		return n, nil
-	}
 }
 
 func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
@@ -140,6 +81,7 @@ func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
 		PeerID: c.PeerID,
 		Hash:   m.Hash,
 	})
+	println("handshake> ", len(data))
 	if err != nil {
 		return nil, fmt.Errorf("encoding failure: %w", err)
 	}
@@ -147,8 +89,8 @@ func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
 		return nil, err
 	}
 
-	resp := [1024]byte{}
-	if _, err := c.recv(resp[:]); err != nil {
+	resp := [68]byte{}
+	if _, err := read(c.bufrw, resp[:]); err != nil {
 		return nil, err
 	}
 
@@ -171,11 +113,12 @@ func (c *Client) waitForUnchoke() error {
 		case <-ticker.C:
 			{
 				fmt.Println("sending \"interested\"")
-				if err := c.writeMessage(interested.ToRaw()); err != nil {
+				data := EncodeMessage(interested)
+				if err := c.send(data); err != nil {
 					return err
 				}
 				fmt.Println("reading msg")
-				if msg, err := c.readMessage(); err != nil {
+				if msg, err := DecodeMessage(c.bufrw); err != nil {
 					return err
 				} else if msg.Tag() != UnchokeType {
 					fmt.Printf("waiting for unchoke - got %T\n", msg)
@@ -196,11 +139,11 @@ func (c *Client) waitForUnchoke() error {
 	}
 }
 
-func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
+func (c *Client) DownloadPiece(m *types.Torrent, pInde int) (*PieceBlock, error) {
 	if !c.Handshaked() {
 		_, err := c.DoHandshake(m)
 		if err != nil {
-			return err
+			return nil, err
 		}
 	}
 	// 1. bitfield
@@ -209,37 +152,38 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 	// 4. request
 	// 5. piece
 	fmt.Println("read bitfield message...")
-	msg, err := c.readMessage()
+	msg, err := DecodeMessage(c.bufrw)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if msg.Tag() != BitFieldType {
-		return fmt.Errorf("expected BitField msg but got ID %d", msg.Tag())
+		return nil, fmt.Errorf("expected BitField msg but got ID %d", msg.Tag())
 	}
 
 	if err := c.waitForUnchoke(); err != nil {
-		return err
+		return nil, err
 	}
 
 	chunkSize := 16 * 1024
-	blocks := make([][]byte, m.Length/chunkSize)
+	_ = make([][]byte, m.Length/chunkSize)
 
-	fmt.Printf("need to request %d blocks for piece %d\n", len(blocks), pIndex)
-
-	req := PieceRequest{
+	req := &PieceRequest{
 		Index:  0,
 		Begin:  0,
 		Length: chunkSize,
 	}
 
 	fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
-	c.writeMessage(req.ToRaw())
+	data := EncodeMessage(req)
+	if err := c.send(data); err != nil {
+		return nil, err
+	}
 
 	for {
-		msg, err := c.readMessage()
+		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		switch m := msg.(type) {
 		case *KeepAlive:
@@ -247,13 +191,12 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) error {
 		case *Choke:
 			fmt.Println("received choke")
 			if err := c.waitForUnchoke(); err != nil {
-				return err
+				return nil, err
 			}
 		case *PieceBlock:
 			{
-				fmt.Printf("Block Index:%d Begin:%d Data Len:%d\n", m.Index, m.Begin, len(m.Data))
+				return m, nil
 			}
-
 		}
 	}
 
