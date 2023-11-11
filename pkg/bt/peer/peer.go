@@ -145,9 +145,8 @@ func assembleData(blocks []*PieceBlock, chunkSize int) []byte {
 		return blocks[i].Begin < blocks[j].Begin
 	})
 
-	lastBlockSize := len(blocks[len(blocks)-1].Data)
 	// The last block may be smaller than the regular chunk size
-	result := make([]byte, 0, (len(blocks)-1)*chunkSize+lastBlockSize)
+	result := make([]byte, 0)
 	for _, block := range blocks {
 		result = append(result, block.Data...)
 	}

@@ -7,20 +7,23 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 )
 
 func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
 	size := len(data)
 	start := 0
 	for size > 0 {
-		if n, err := reader.Read(data[start:]); err != nil {
+		max := int(math.Min(float64(512), float64(size)))
+		end := start + max
+		if n, err := reader.Read(data[start:end]); err != nil {
 			if errors.Is(err, io.EOF) {
 				return size, err
 			} else {
 				return n, fmt.Errorf("read failure: %w", err)
 			}
 		} else {
-			start = n
+			start += n
 			size -= n
 		}
 	}
@@ -93,6 +96,7 @@ func decodePiece(msg *RawMessage) (*PieceBlock, error) {
 	block.Begin = int(binary.BigEndian.Uint32(msg.Payload[4:8])) // 4 bytes
 
 	block.Data = msg.Payload[8:]
+
 	return &block, nil
 }
 
