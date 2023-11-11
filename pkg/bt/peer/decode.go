@@ -18,7 +18,7 @@ func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
 		end := start + max
 		if n, err := reader.Read(data[start:end]); err != nil {
 			if errors.Is(err, io.EOF) {
-				return size, nil
+				return size, io.EOF
 			} else {
 				return n, fmt.Errorf("read failure: %w", err)
 			}
@@ -58,7 +58,9 @@ func DecodeRawMessage(r *bufio.ReadWriter) (*RawMessage, error) {
 	if length > 1 {
 		msg.Payload = make([]byte, length-1) // -1  because we don't want the message tag
 		if n, err := read(r, msg.Payload); err != nil {
+			fmt.Printf("error reading payload: %v (%T)\n", err, err)
 			if errors.Is(err, io.EOF) {
+				msg.Payload = msg.Payload[:n]
 				println("EOF reached while reading payload - read", n)
 			} else {
 				return nil, err
