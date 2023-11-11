@@ -135,10 +135,7 @@ func main() {
 				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
 			}
 
-			client, err := peer.NewClient(PeerID)
-			if err != nil {
-				FatalExit("failed to create peer client: %v", err)
-			}
+			client := peer.NewClient(PeerID)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
@@ -147,7 +144,7 @@ func main() {
 			}
 			defer client.Close()
 
-			handshake, err := client.DoHandshake(t)
+			handshake, err := client.Handshake(t)
 			if err != nil {
 				FatalExit("%q handshake failed: %v", p.String(), err)
 			}
@@ -174,18 +171,14 @@ func main() {
 				FatalExit("failed to get peers: %v", os.Args[2], err)
 			}
 
-			client, err := peer.NewClient(PeerID)
+			client, err := peer.NewHandshakedClient(PeerID, peers.Peers[0], t)
 			if err != nil {
-				FatalExit("failed to create peer client: %v", err)
+				FatalExit("failed to create handshaked peer client: %v", err)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-
-			if err = client.Connect(ctx, peers.Peers[0]); err != nil {
+			if _, err := client.BitField(); err != nil {
 				FatalExit("failed to connect to client: %v", err)
 			}
-			defer client.Close()
 
 			fmt.Printf("Downloading Piece %d from peer %s [%x] (%d)\n", pieceIdx, client.Peer.String(), t.Pieces[pieceIdx], t.PieceLength)
 			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {

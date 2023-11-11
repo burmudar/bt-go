@@ -31,10 +31,25 @@ func (c *Client) writeMessage(msg Message) error {
 	return c.send(data)
 }
 
-func NewClient(peerID string) (*Client, error) {
+func NewClient(peerID string) *Client {
 	return &Client{
 		PeerID: peerID,
-	}, nil
+	}
+}
+
+func NewHandshakedClient(id string, peer *types.Peer, torrent *types.Torrent) (*Client, error) {
+	client := NewClient(id)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Connect(ctx, peer); err != nil {
+		return nil, fmt.Errorf("failed to connect to client: %v", err)
+	}
+
+	if _, err := client.Handshake(torrent); err != nil {
+		return nil, fmt.Errorf("failed to perform handshake to client: %v", err)
+	}
+	return client, nil
 }
 
 func (c *Client) Handshaked() bool {
@@ -72,7 +87,7 @@ func (c *Client) send(data []byte) error {
 	return nil
 }
 
-func (c *Client) DoHandshake(m *types.Torrent) (*Handshake, error) {
+func (c *Client) Handshake(m *types.Torrent) (*Handshake, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -154,18 +169,7 @@ func assembleData(blocks []*PieceBlock, chunkSize int) []byte {
 	return result
 }
 
-func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, error) {
-	if !c.Handshaked() {
-		_, err := c.DoHandshake(m)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// 1. bitfield
-	// 2. interested
-	// 3. unchoke
-	// 4. request
-	// 5. piece
+func (c *Client) BitField() (Message, error) {
 	fmt.Println("read bitfield message...")
 	msg, err := DecodeMessage(c.bufrw)
 	if err != nil {
@@ -176,6 +180,15 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, fmt.Errorf("expected BitField msg but got ID %d", msg.Tag())
 	}
 
+	return msg, nil
+}
+
+func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, error) {
+	// 1. bitfield
+	// 2. interested
+	// 3. unchoke
+	// 4. request
+	// 5. piece
 	if err := c.waitForUnchoke(); err != nil {
 		return nil, err
 	}
@@ -186,6 +199,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	// number of pieces
 	numPieces := m.Length / int(m.PieceLength)
 	lastBlockLength := 0
+	// need to calculate the length of the last block if it is not a full block size
 	if pIndex+1 == numPieces {
 		lastPieceLength := m.Length % m.PieceLength
 		if lastPieceLength != 0 {
@@ -210,12 +224,10 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
 		if err := c.send(data); err != nil {
-			println("HERE 1")
 			return nil, err
 		}
 		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
-			println("HERE 2")
 			return nil, err
 		}
 		switch m := msg.(type) {
