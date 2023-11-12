@@ -208,7 +208,20 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	}
 
 	blocks := make([]*PieceBlock, blockCount)
-	fmt.Printf("need to request %d blocks\n", blockCount)
+	fmt.Printf(`Download Piece details:
+Totail Pieces: %d
+Total Blocks: %d
+Block Size: %d
+LastBlockSize: %d
+Piece Index: %d
+Last Piece Index: %d`,
+		m.TotalPieces(),
+		blockCount,
+		blockSize,
+		lastBlockLength,
+		pIndex,
+		m.LastPieceIndex(),
+	)
 	for blockIndex := 0; blockIndex < blockCount; blockIndex++ {
 		req := &PieceRequest{
 			Index:  pIndex,
