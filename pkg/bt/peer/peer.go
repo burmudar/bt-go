@@ -4,11 +4,11 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"math"
 	"net"
 	"sort"
 	"time"
 
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
@@ -155,7 +155,7 @@ func (c *Client) waitForUnchoke() error {
 	}
 }
 
-func assembleData(blocks []*PieceBlock, chunkSize int) []byte {
+func assembleData(blocks []*PieceBlock) []byte {
 	sort.Slice(blocks, func(i, j int) bool {
 		return blocks[i].Begin < blocks[j].Begin
 	})
@@ -193,18 +193,17 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	chunkSize := 16 * 1024
-	pieceLen := int(math.Max(float64(m.PieceLength), float64(chunkSize)))
-	blockCount := pieceLen / chunkSize
+	blockSize := 16 * 1024
+	pieceLength := bt.Max(m.PieceLength, blockSize)
+	blockCount := pieceLength / blockSize
 	// number of pieces
-	numPieces := m.Length / int(m.PieceLength)
 	lastBlockLength := 0
 	// need to calculate the length of the last block if it is not a full block size
-	if pIndex+1 == numPieces {
-		lastPieceLength := m.Length % m.PieceLength
+	if pIndex+1 == m.LastPieceIndex() {
+		lastPieceLength := m.LastPieceLength()
 		if lastPieceLength != 0 {
-			blockCount = int(math.Ceil(float64(lastPieceLength) / float64(chunkSize)))
-			lastBlockLength = lastPieceLength % chunkSize
+			blockCount = bt.Ceil(lastPieceLength, blockSize)
+			lastBlockLength = lastPieceLength % blockSize
 		}
 	}
 
@@ -213,11 +212,11 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	for blockIndex := 0; blockIndex < blockCount; blockIndex++ {
 		req := &PieceRequest{
 			Index:  pIndex,
-			Begin:  blockIndex * chunkSize,
-			Length: chunkSize,
+			Begin:  blockIndex * blockSize,
+			Length: blockSize,
 		}
 		if blockIndex == blockCount-1 && lastBlockLength != 0 {
-			fmt.Println("last piece - updating block")
+			fmt.Printf("last piece, updating block - blockSize: %d lastBlockLength: %d", blockSize, lastBlockLength)
 			// we're at the last block and this is part of a last block in the piece
 			req.Length = lastBlockLength
 		}
@@ -249,7 +248,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	return &types.Piece{
 		Index: pIndex,
 		Peer:  *c.Peer,
-		Size:  chunkSize,
-		Data:  assembleData(blocks, chunkSize),
+		Size:  blockSize,
+		Data:  assembleData(blocks),
 	}, nil
 }

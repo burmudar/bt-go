@@ -5,6 +5,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 )
 
 type FileInfo struct {
@@ -82,4 +84,16 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 	}
 
 	return info
+}
+
+func (m *Torrent) TotalPieces() int {
+	return len(m.Pieces)
+}
+
+func (m *Torrent) LastPieceIndex() int {
+	return bt.Ceil(m.Length, int(m.PieceLength)) - 1
+}
+
+func (m *Torrent) LastPieceLength() int {
+	return m.Length % m.PieceLength
 }
