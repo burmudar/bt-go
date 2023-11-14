@@ -8,7 +8,6 @@ import (
 	"sort"
 	"time"
 
-	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
@@ -193,45 +192,18 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	blockSize := 16 * 1024
-	pieceLength := bt.Max(m.PieceLength, blockSize)
-	blockCount := pieceLength / blockSize
-	// number of pieces
-	lastBlockLength := 0
-	// need to calculate the length of the last block if it is not a full block size
-	if pIndex+1 == m.LastPieceIndex() {
-		lastPieceLength := m.LastPieceLength()
-		if lastPieceLength != 0 {
-			blockCount = bt.Ceil(lastPieceLength, blockSize)
-			lastBlockLength = lastPieceLength % blockSize
-		}
-	}
+	pieceSpec := m.GetPieceSpec(16 * 1024)
 
-	blocks := make([]*PieceBlock, blockCount)
-	fmt.Printf(`Download Piece details:
-Totail Pieces: %d
-Total Blocks: %d
-Block Size: %d
-LastBlockSize: %d
-Piece Index: %d
-Last Piece Index: %d`,
-		m.TotalPieces(),
-		blockCount,
-		blockSize,
-		lastBlockLength,
-		pIndex,
-		m.LastPieceIndex(),
-	)
-	for blockIndex := 0; blockIndex < blockCount; blockIndex++ {
+	blocks := make([]*PieceBlock, pieceSpec.TotalBlocks)
+	for blockIndex := 0; blockIndex < pieceSpec.TotalBlocks; blockIndex++ {
 		req := &PieceRequest{
 			Index:  pIndex,
-			Begin:  blockIndex * blockSize,
-			Length: blockSize,
+			Begin:  blockIndex * pieceSpec.BlockSize,
+			Length: pieceSpec.BlockSize,
 		}
-		if blockIndex == blockCount-1 && lastBlockLength != 0 {
-			fmt.Printf("last piece, updating block - blockSize: %d lastBlockLength: %d", blockSize, lastBlockLength)
+		if blockIndex == pieceSpec.LastPieceIndex {
 			// we're at the last block and this is part of a last block in the piece
-			req.Length = lastBlockLength
+			req.Length = pieceSpec.LastBlockSize
 		}
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
@@ -261,7 +233,7 @@ Last Piece Index: %d`,
 	return &types.Piece{
 		Index: pIndex,
 		Peer:  *c.Peer,
-		Size:  blockSize,
+		Size:  pieceSpec.BlockSize,
 		Data:  assembleData(blocks),
 	}, nil
 }

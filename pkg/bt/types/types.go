@@ -26,6 +26,15 @@ type Torrent struct {
 	RawInfo      map[string]interface{}
 }
 
+type PieceSpec struct {
+	TotalBlocks     int
+	TotalPieces     int
+	BlockSize       int
+	LastBlockSize   int
+	LastPieceIndex  int
+	LastPieceLength int
+}
+
 type Peer struct {
 	IP   net.IP
 	Port int
@@ -86,14 +95,22 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 	return info
 }
 
-func (m *Torrent) TotalPieces() int {
-	return len(m.Pieces)
-}
+func (m *Torrent) GetPieceSpec(blockSize int) *PieceSpec {
+	var b PieceSpec
+	b.BlockSize = bt.Min(m.PieceLength, blockSize)
+	b.TotalPieces = len(m.Pieces)
+	b.TotalBlocks = m.Length / b.BlockSize
+	b.LastPieceIndex = b.TotalPieces - 1
 
-func (m *Torrent) LastPieceIndex() int {
-	return bt.Ceil(m.Length, int(m.PieceLength)) - 1
-}
-
-func (m *Torrent) LastPieceLength() int {
-	return m.Length % m.PieceLength
+	lastPieceLength := m.Length % m.PieceLength
+	println(m.Length, " % ", m.PieceLength, " = ", lastPieceLength)
+	// last Piece is not the same size as other Pieces, so we have to handle it differently
+	if lastPieceLength != 0 {
+		b.LastPieceLength = lastPieceLength
+		b.LastBlockSize = b.LastPieceLength % b.BlockSize
+	} else {
+		b.LastPieceLength = m.PieceLength
+		b.LastBlockSize = b.BlockSize
+	}
+	return &b
 }

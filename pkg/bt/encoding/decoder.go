@@ -9,12 +9,12 @@ import (
 	"os"
 	"unicode"
 
-	bt "github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
+	bttypes "github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 	//"github.com/jackpal/bencode-go"
 )
 
-func newFileInfo(value map[string]interface{}) *bt.FileInfo {
-	var f bt.FileInfo
+func newFileInfo(value map[string]interface{}) *bttypes.FileInfo {
+	var f bttypes.FileInfo
 
 	f.Length = value["length"].(int)
 	paths := []string{}
@@ -26,7 +26,7 @@ func newFileInfo(value map[string]interface{}) *bt.FileInfo {
 	return &f
 }
 
-func DecodeTorrent(filename string) (*bt.Torrent, error) {
+func DecodeTorrent(filename string) (*bttypes.Torrent, error) {
 	raw, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func DecodeTorrent(filename string) (*bt.Torrent, error) {
 		return nil, fmt.Errorf("info dict not found")
 	}
 
-	var m bt.Torrent
+	var m bttypes.Torrent
 	m.RawInfo = info
 	m.Announce = dict["announce"].(string)
 
@@ -88,7 +88,7 @@ func DecodeTorrent(filename string) (*bt.Torrent, error) {
 	if v, ok := info["length"]; ok {
 		m.Length = v.(int)
 	} else {
-		m.Files = make([]*bt.FileInfo, 0)
+		m.Files = make([]*bttypes.FileInfo, 0)
 		fileList := info["files"].([]interface{})
 
 		for _, item := range fileList {
