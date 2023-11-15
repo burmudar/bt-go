@@ -70,7 +70,7 @@ func DecodeTorrent(filename string) (*bttypes.Torrent, error) {
 	piecesStr := info["pieces"].(string)
 	buf := bytes.NewBufferString(piecesStr)
 
-	m.Pieces = []string{}
+	m.PieceHashes = []string{}
 	for {
 		data := make([]byte, 20)
 		n, err := buf.Read(data)
@@ -78,7 +78,7 @@ func DecodeTorrent(filename string) (*bttypes.Torrent, error) {
 			return nil, err
 		}
 		if n > 0 {
-			m.Pieces = append(m.Pieces, string(data[:n]))
+			m.PieceHashes = append(m.PieceHashes, string(data[:n]))
 		}
 		if errors.Is(err, io.EOF) {
 			break

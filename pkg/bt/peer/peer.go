@@ -192,19 +192,13 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	pieceSpec := m.GetPieceSpec(16 * 1024)
-
-	blocks := make([]*PieceBlock, pieceSpec.TotalBlocks)
-	println("TOTAL BLOCKS", pieceSpec.TotalBlocks)
-	for blockIndex := 0; blockIndex < pieceSpec.TotalBlocks; blockIndex++ {
+	blocks := m.BlocksFor(pIndex, 16*1024)
+	downloaded := make([]*PieceBlock, len(blocks))
+	for i, b := range blocks {
 		req := &PieceRequest{
 			Index:  pIndex,
-			Begin:  blockIndex * pieceSpec.BlockSize,
-			Length: pieceSpec.BlockSize,
-		}
-		if pIndex == pieceSpec.LastPieceIndex && blockIndex == pieceSpec.TotalBlocks-1 {
-			// we're at the last block and this is part of a last block in the piece
-			req.Length = pieceSpec.LastBlockSize
+			Begin:  b.Idx,
+			Length: b.Length,
 		}
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
@@ -227,22 +221,18 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 			}
 		case *PieceBlock:
 			{
-				fmt.Printf("received block %d for piece %d - Begin: %d Length: %d\n", blockIndex, m.Index, m.Begin, len(m.Data))
-				blocks[blockIndex] = m
+				fmt.Printf("received block %d for piece %d - Begin: %d Length: %d\n", i, m.Index, m.Begin, len(m.Data))
+				downloaded[i] = m
 			}
 		}
 	}
 
-	data := assembleData(blocks)
+	data := assembleData(downloaded)
 	piece := &types.Piece{
 		Index: pIndex,
 		Peer:  *c.Peer,
-		Size:  pieceSpec.PieceLength,
+		Size:  m.LengthOf(pIndex),
 		Data:  data,
-	}
-
-	if pIndex == pieceSpec.LastPieceIndex {
-		piece.Size = pieceSpec.LastPieceLength
 	}
 
 	return piece, nil

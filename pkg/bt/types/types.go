@@ -14,12 +14,17 @@ type FileInfo struct {
 	Paths  []string
 }
 
+type Block struct {
+	Idx    int
+	Length int
+}
+
 type Torrent struct {
 	Announce     string
 	AnnounceList []string
 	Name         string
 	PieceLength  int
-	Pieces       []string
+	PieceHashes  []string
 	Length       int
 	Files        []*FileInfo
 	Hash         [20]byte
@@ -82,13 +87,13 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 			"name":         m.Name,
 			"length":       m.Length,
 			"piece length": m.PieceLength,
-			"pieces":       strings.Join(m.Pieces, ""),
+			"pieces":       strings.Join(m.PieceHashes, ""),
 		}
 	} else {
 		info = map[string]interface{}{
 			"name":         m.Name,
 			"piece length": m.PieceLength,
-			"pieces":       strings.Join(m.Pieces, ""),
+			"pieces":       strings.Join(m.PieceHashes, ""),
 			"files":        m.Files,
 		}
 	}
@@ -96,13 +101,41 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 	return info
 }
 
+func (m *Torrent) LengthOf(p int) int {
+	if p == len(m.PieceHashes)-1 {
+		return m.Length % m.PieceLength
+	}
+	return m.PieceLength
+}
+
+func (m *Torrent) BlocksFor(piece, blockSize int) []Block {
+	var (
+		blocks []Block
+		length = m.LengthOf(piece)
+	)
+
+	for i := 0; i < length; i += blockSize {
+		b := Block{i, blockSize}
+
+		// if the next block will push us over the length it means we're at the last block
+		// so subtract i, which is the last block from length to get the last block size
+		if i+blockSize >= length {
+			b.Length = length - i
+		}
+
+		blocks = append(blocks, b)
+	}
+
+	return blocks
+
+}
+
 func (m *Torrent) GetPieceSpec(blockSize int) *PieceSpec {
 	var b PieceSpec
-	b.BlockSize = bt.Min(m.PieceLength, blockSize)
+	b.BlockSize = blockSize
 	b.PieceLength = m.PieceLength
-	b.TotalPieces = len(m.Pieces)
+	b.TotalPieces = len(m.PieceHashes)
 	b.TotalBlocks = bt.Ceil(m.PieceLength, b.BlockSize)
-	b.LastPieceIndex = b.TotalPieces - 1
 
 	lastPieceLength := m.Length % m.PieceLength
 	// last Piece is not the same size as other Pieces, so we have to handle it differently

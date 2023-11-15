@@ -39,7 +39,7 @@ func printMetaInfo(m *types.Torrent) {
 	fmt.Printf("Info Hash: %s\n", hex.EncodeToString(m.Hash[:]))
 	fmt.Printf("Piece Length: %d\n", m.PieceLength)
 	fmt.Println("Piece Hashes:")
-	for _, p := range m.Pieces {
+	for _, p := range m.PieceHashes {
 		fmt.Printf("%x\n", p)
 	}
 }
@@ -180,7 +180,7 @@ func main() {
 				FatalExit("failed to connect to client: %v", err)
 			}
 
-			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.Pieces[pieceIdx], t.PieceLength)
+			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.PieceHashes[pieceIdx], t.PieceLength)
 			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {
 				FatalExit("piece download failure: %v", err)
 			} else {

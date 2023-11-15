@@ -10,7 +10,7 @@ func TestBlockSpec(t *testing.T) {
 	torrent := types.Torrent{
 		Name:        "Test Torrent",
 		PieceLength: 16 * 1024, // 16 KiB
-		Pieces:      []string{"1", "2", "3"},
+		PieceHashes: []string{"1", "2", "3"},
 		Length:      ((16 * 1024) * 3) - 1, // 3 pieces with the last piece being slightly smaller
 	}
 	blockSize := 16 * 1024
