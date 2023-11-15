@@ -230,10 +230,17 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		}
 	}
 
-	return &types.Piece{
+	data := assembleData(blocks)
+	piece := &types.Piece{
 		Index: pIndex,
 		Peer:  *c.Peer,
-		Size:  pieceSpec.BlockSize,
-		Data:  assembleData(blocks),
-	}, nil
+		Size:  pieceSpec.PieceLength,
+		Data:  data,
+	}
+
+	if pIndex == pieceSpec.LastPieceIndex {
+		piece.Size = pieceSpec.LastPieceLength
+	}
+
+	return piece, nil
 }

@@ -29,6 +29,9 @@ func TestBlockSpec(t *testing.T) {
 	if b.TotalPieces != 3 {
 		t.Errorf("incorrect total piece count - got %d wanted %d", b.TotalPieces, torrent.Length/torrent.PieceLength)
 	}
+	if b.PieceLength != torrent.PieceLength {
+		t.Errorf("incorrect piece length - got %d wanted %d", b.PieceLength, 16*1024)
+	}
 	if b.LastPieceLength != (16*1024)-1 {
 		t.Errorf("incorrect last piece length - got %d wanted %d", b.LastPieceLength, 16*1024-1)
 	}

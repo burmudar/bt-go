@@ -27,6 +27,7 @@ type Torrent struct {
 }
 
 type PieceSpec struct {
+	PieceLength     int
 	TotalBlocks     int
 	TotalPieces     int
 	BlockSize       int
@@ -98,12 +99,12 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 func (m *Torrent) GetPieceSpec(blockSize int) *PieceSpec {
 	var b PieceSpec
 	b.BlockSize = bt.Min(m.PieceLength, blockSize)
+	b.PieceLength = m.PieceLength
 	b.TotalPieces = len(m.Pieces)
 	b.TotalBlocks = m.Length / b.BlockSize
 	b.LastPieceIndex = b.TotalPieces - 1
 
 	lastPieceLength := m.Length % m.PieceLength
-	println(m.Length, " % ", m.PieceLength, " = ", lastPieceLength)
 	// last Piece is not the same size as other Pieces, so we have to handle it differently
 	if lastPieceLength != 0 {
 		b.LastPieceLength = lastPieceLength
