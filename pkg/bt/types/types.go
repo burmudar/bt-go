@@ -101,7 +101,7 @@ func (m *Torrent) GetPieceSpec(blockSize int) *PieceSpec {
 	b.BlockSize = bt.Min(m.PieceLength, blockSize)
 	b.PieceLength = m.PieceLength
 	b.TotalPieces = len(m.Pieces)
-	b.TotalBlocks = m.Length / b.BlockSize
+	b.TotalBlocks = bt.Ceil(m.PieceLength, b.BlockSize)
 	b.LastPieceIndex = b.TotalPieces - 1
 
 	lastPieceLength := m.Length % m.PieceLength

@@ -195,13 +195,14 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	pieceSpec := m.GetPieceSpec(16 * 1024)
 
 	blocks := make([]*PieceBlock, pieceSpec.TotalBlocks)
+	println("TOTAL BLOCKS", pieceSpec.TotalBlocks)
 	for blockIndex := 0; blockIndex < pieceSpec.TotalBlocks; blockIndex++ {
 		req := &PieceRequest{
 			Index:  pIndex,
 			Begin:  blockIndex * pieceSpec.BlockSize,
 			Length: pieceSpec.BlockSize,
 		}
-		if blockIndex == pieceSpec.LastPieceIndex {
+		if pIndex == pieceSpec.LastPieceIndex && blockIndex == pieceSpec.TotalBlocks-1 {
 			// we're at the last block and this is part of a last block in the piece
 			req.Length = pieceSpec.LastBlockSize
 		}
@@ -210,8 +211,10 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		if err := c.send(data); err != nil {
 			return nil, err
 		}
+		println("Decoding msg")
 		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
+			println("ERR", err)
 			return nil, err
 		}
 		switch m := msg.(type) {

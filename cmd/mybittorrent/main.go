@@ -180,7 +180,7 @@ func main() {
 				FatalExit("failed to connect to client: %v", err)
 			}
 
-			fmt.Printf("Downloading Piece %d from peer %s [%x] (%d)\n", pieceIdx, client.Peer.String(), t.Pieces[pieceIdx], t.PieceLength)
+			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.Pieces[pieceIdx], t.PieceLength)
 			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {
 				FatalExit("piece download failure: %v", err)
 			} else {
