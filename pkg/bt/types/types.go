@@ -5,8 +5,6 @@ import (
 	"net"
 	"strconv"
 	"strings"
-
-	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 )
 
 type FileInfo struct {
@@ -128,23 +126,4 @@ func (m *Torrent) BlocksFor(piece, blockSize int) []Block {
 
 	return blocks
 
-}
-
-func (m *Torrent) GetPieceSpec(blockSize int) *PieceSpec {
-	var b PieceSpec
-	b.BlockSize = blockSize
-	b.PieceLength = m.PieceLength
-	b.TotalPieces = len(m.PieceHashes)
-	b.TotalBlocks = bt.Ceil(m.PieceLength, b.BlockSize)
-
-	lastPieceLength := m.Length % m.PieceLength
-	// last Piece is not the same size as other Pieces, so we have to handle it differently
-	if lastPieceLength != 0 {
-		b.LastPieceLength = lastPieceLength
-		b.LastBlockSize = b.LastPieceLength % b.BlockSize
-	} else {
-		b.LastPieceLength = m.PieceLength
-		b.LastBlockSize = b.BlockSize
-	}
-	return &b
 }
