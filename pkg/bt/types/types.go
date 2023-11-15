@@ -29,16 +29,6 @@ type Torrent struct {
 	RawInfo      map[string]interface{}
 }
 
-type PieceSpec struct {
-	PieceLength     int
-	TotalBlocks     int
-	TotalPieces     int
-	BlockSize       int
-	LastBlockSize   int
-	LastPieceIndex  int
-	LastPieceLength int
-}
-
 type Peer struct {
 	IP   net.IP
 	Port int
@@ -104,6 +94,14 @@ func (m *Torrent) LengthOf(p int) int {
 		return m.Length % m.PieceLength
 	}
 	return m.PieceLength
+}
+
+func (m *Torrent) HashFor(p int) []byte {
+	if p >= len(m.PieceHashes) {
+		return nil
+	}
+
+	return []byte(m.PieceHashes[p])
 }
 
 func (m *Torrent) BlocksFor(piece, blockSize int) []Block {

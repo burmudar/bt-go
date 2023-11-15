@@ -205,10 +205,8 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		if err := c.send(data); err != nil {
 			return nil, err
 		}
-		println("Decoding msg")
 		msg, err := DecodeMessage(c.bufrw)
 		if err != nil {
-			println("ERR", err)
 			return nil, err
 		}
 		switch m := msg.(type) {
