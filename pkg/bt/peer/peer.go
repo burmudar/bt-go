@@ -194,7 +194,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 
 	plan := m.BlockPlan(pIndex, 16*1024)
 	downloaded := make([]*PieceBlock, plan.NumBlocks)
-	for i := 0; i <= plan.NumBlocks; i++ {
+	for i := 0; i < plan.NumBlocks; i++ {
 		req := &PieceRequest{
 			Index:  pIndex,
 			Begin:  i * plan.BlockSize,
