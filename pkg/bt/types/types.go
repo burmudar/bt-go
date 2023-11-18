@@ -5,6 +5,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 )
 
 type FileInfo struct {
@@ -12,9 +14,12 @@ type FileInfo struct {
 	Paths  []string
 }
 
-type Block struct {
-	Idx    int
-	Length int
+type BlockPlan struct {
+	PieceLength    int
+	NumBlocks      int
+	BlockSize      int
+	LastBlockIndex int
+	LastBlockSize  int
 }
 
 type Torrent struct {
@@ -104,24 +109,34 @@ func (m *Torrent) HashFor(p int) []byte {
 	return []byte(m.PieceHashes[p])
 }
 
-func (m *Torrent) BlocksFor(piece, blockSize int) []Block {
-	var (
-		blocks []Block
-		length = m.LengthOf(piece)
-	)
+func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
+	isLastPiece := (len(m.PieceHashes)-1 == pIndex)
+	pieceLength := m.PieceLength
+	lastBlockSize := blockSize
 
-	for i := 0; i < length; i += blockSize {
-		b := Block{i, blockSize}
-
-		// if the next block will push us over the length it means we're at the last block
-		// so subtract i, which is the last block from length to get the last block size
-		if i+blockSize >= length {
-			b.Length = length - i
+	if isLastPiece {
+		lastPieceLength := m.Length % m.PieceLength
+		if lastPieceLength != 0 {
+			pieceLength = lastPieceLength
+			lastBlockSize = pieceLength % blockSize
 		}
-
-		blocks = append(blocks, b)
 	}
 
-	return blocks
+	numBlocks := bt.Ceil(pieceLength, blockSize)
+	return &BlockPlan{
+		PieceLength:    pieceLength,
+		NumBlocks:      numBlocks,
+		BlockSize:      blockSize,
+		LastBlockIndex: numBlocks - 1,
+		LastBlockSize:  lastBlockSize,
+	}
 
+}
+
+func (p *BlockPlan) BlockLengthFor(blockIndex int) int {
+	if blockIndex == p.LastBlockIndex {
+		return p.LastBlockSize
+	}
+
+	return p.BlockSize
 }

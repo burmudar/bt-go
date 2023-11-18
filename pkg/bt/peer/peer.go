@@ -192,14 +192,15 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	blocks := m.BlocksFor(pIndex, 16*1024)
-	downloaded := make([]*PieceBlock, len(blocks))
-	for i, b := range blocks {
+	plan := m.BlockPlan(pIndex, 16*1024)
+	downloaded := make([]*PieceBlock, plan.NumBlocks)
+	for i := 0; i <= plan.NumBlocks; i++ {
 		req := &PieceRequest{
 			Index:  pIndex,
-			Begin:  b.Idx,
-			Length: b.Length,
+			Begin:  i * plan.BlockSize,
+			Length: plan.BlockLengthFor(i),
 		}
+
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
 		if err := c.send(data); err != nil {
