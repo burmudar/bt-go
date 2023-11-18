@@ -198,7 +198,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		req := &PieceRequest{
 			Index:  pIndex,
 			Begin:  i * plan.BlockSize,
-			Length: plan.BlockLengthFor(i),
+			Length: plan.BlockSizeFor(i),
 		}
 
 		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)

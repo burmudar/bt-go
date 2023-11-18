@@ -109,6 +109,10 @@ func (m *Torrent) HashFor(p int) []byte {
 	return []byte(m.PieceHashes[p])
 }
 
+// BlockPlan determines the various block sizes one has to use for the given piece index and block size.
+// In particular, care is taken to calculate the last block size of a particular piece since it might a Piece
+// might not uniformly divide into the given blockSize, hence last block in the last piece might need to be
+// a smaller size than the given blockSize.
 func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
 	isLastPiece := (len(m.PieceHashes)-1 == pIndex)
 	pieceLength := m.PieceLength
@@ -133,7 +137,7 @@ func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
 
 }
 
-func (p *BlockPlan) BlockLengthFor(blockIndex int) int {
+func (p *BlockPlan) BlockSizeFor(blockIndex int) int {
 	if blockIndex == p.LastBlockIndex {
 		return p.LastBlockSize
 	}
