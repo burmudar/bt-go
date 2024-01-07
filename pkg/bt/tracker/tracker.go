@@ -63,7 +63,7 @@ func NewClient() *TrackerClient {
 	}
 }
 
-func NewPeerRequest(peerID string, port int, m *types.Torrent) (*PeersRequest, error) {
+func newPeerRequest(peerID string, port int, m *types.Torrent) (*PeersRequest, error) {
 	return &PeersRequest{
 		Announce: m.Announce,
 		PeerID:   peerID,
@@ -111,7 +111,7 @@ func (p *PeersRequest) HTTPRequest() (*http.Request, error) {
 	return http.NewRequest("GET", trackerURL.String(), nil)
 }
 
-func (t *TrackerClient) PeersRequest(treq TrackerRequest) (*PeersResponse, error) {
+func (t *TrackerClient) peersRequest(treq TrackerRequest) (*PeersResponse, error) {
 	req, err := treq.HTTPRequest()
 	if err != nil {
 		return nil, fmt.Errorf("http request creation failure: %v", err)
@@ -204,4 +204,30 @@ func decodePeersResponse(d []byte) (*PeersResponse, error) {
 		Peers:    peers,
 	}, nil
 
+}
+
+func (t *TrackerClient) GetPeers(peerID string, port int, torrent *types.Torrent) (*types.PeerSpec, error) {
+	req, err := newPeerRequest(peerID, port, torrent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create peer request: %v", err)
+	}
+	resp, err := t.peersRequest(req)
+	if err != nil {
+		// TODO(burmudar): look into using this more
+		if len(torrent.AnnounceList) > 0 {
+			for i := 1; i <= len(torrent.AnnounceList) && (resp == nil && err != nil); i++ {
+				req.Announce = torrent.AnnounceList[i]
+				resp, err = t.peersRequest(req)
+			}
+			if err != nil {
+				return nil, fmt.Errorf("peers request failure: %v", err)
+			}
+		} else {
+			return nil, fmt.Errorf("peers request failure: %v", err)
+		}
+	}
+	return &types.PeerSpec{
+		Peers:    resp.Peers,
+		Interval: resp.Interval,
+	}, nil
 }
