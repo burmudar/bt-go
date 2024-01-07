@@ -45,7 +45,7 @@ func NewHandshakedClient(id string, peer *types.Peer, torrent *types.Torrent) (*
 		return nil, fmt.Errorf("failed to connect to client: %v", err)
 	}
 
-	if _, err := client.Handshake(torrent); err != nil {
+	if _, err := client.Handshake(torrent.Hash); err != nil {
 		return nil, fmt.Errorf("failed to perform handshake to client: %v", err)
 	}
 	return client, nil
@@ -86,7 +86,7 @@ func (c *Client) send(data []byte) error {
 	return nil
 }
 
-func (c *Client) Handshake(m *types.Torrent) (*Handshake, error) {
+func (c *Client) Handshake(hash [20]byte) (*Handshake, error) {
 	if !c.IsConnected() {
 		return nil, fmt.Errorf("not connected")
 	}
@@ -95,7 +95,7 @@ func (c *Client) Handshake(m *types.Torrent) (*Handshake, error) {
 
 	data, err := encodeHandshake(&Handshake{
 		PeerID: c.PeerID,
-		Hash:   m.Hash,
+		Hash:   hash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encoding failure: %w", err)
@@ -182,7 +182,7 @@ func (c *Client) BitField() (Message, error) {
 	return msg, nil
 }
 
-func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, error) {
+func (c *Client) DownloadPiece(t *types.Torrent, pIndex int) (*types.Piece, error) {
 	// 1. bitfield
 	// 2. interested
 	// 3. unchoke
@@ -192,7 +192,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	plan := m.BlockPlan(pIndex, 16*1024)
+	plan := t.BlockPlan(pIndex, 16*1024)
 	downloaded := make([]*PieceBlock, plan.NumBlocks)
 	for i := 0; i < plan.NumBlocks; i++ {
 		req := &PieceRequest{
@@ -230,7 +230,7 @@ func (c *Client) DownloadPiece(m *types.Torrent, pIndex int) (*types.Piece, erro
 	piece := &types.Piece{
 		Index: pIndex,
 		Peer:  *c.Peer,
-		Size:  m.LengthOf(pIndex),
+		Size:  t.LengthOf(pIndex),
 		Data:  data,
 	}
 

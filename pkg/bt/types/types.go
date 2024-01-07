@@ -15,6 +15,7 @@ type FileInfo struct {
 }
 
 type BlockPlan struct {
+	Hash           []byte
 	PieceLength    int
 	NumBlocks      int
 	BlockSize      int
@@ -128,6 +129,7 @@ func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
 
 	numBlocks := bt.Ceil(pieceLength, blockSize)
 	return &BlockPlan{
+		Hash:           []byte(m.PieceHashes[pIndex]),
 		PieceLength:    pieceLength,
 		NumBlocks:      numBlocks,
 		BlockSize:      blockSize,
@@ -135,6 +137,15 @@ func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
 		LastBlockSize:  lastBlockSize,
 	}
 
+}
+
+func (m *Torrent) AllBlockPlans(blockSize int) []*BlockPlan {
+	all := []*BlockPlan{}
+	for i := 0; i < len(m.PieceHashes); i++ {
+		all = append(all, m.BlockPlan(i, blockSize))
+	}
+
+	return all
 }
 
 func (p *BlockPlan) BlockSizeFor(blockIndex int) int {

@@ -46,30 +46,7 @@ func printMetaInfo(m *types.Torrent) {
 
 func GetPeers(m *types.Torrent) (*types.PeerSpec, error) {
 	client := tracker.NewClient()
-	req, err := tracker.NewPeerRequest(PeerID, 6881, m)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create peer request: %v", err)
-	}
-	resp, err := client.PeersRequest(req)
-	if err != nil {
-		// TODO(burmudar): look into using this more
-		if len(m.AnnounceList) > 0 {
-			for i := 1; i <= len(m.AnnounceList) && (resp == nil && err != nil); i++ {
-				req.Announce = m.AnnounceList[i]
-				resp, err = client.PeersRequest(req)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("peers request failure: %v", err)
-			}
-		} else {
-			return nil, fmt.Errorf("peers request failure: %v", err)
-		}
-	}
-
-	return &types.PeerSpec{
-		Peers:    resp.Peers,
-		Interval: resp.Interval,
-	}, nil
+	return client.GetPeers(PeerID, 6881, m)
 }
 
 func FatalExit(format string, args ...interface{}) {
