@@ -1,152 +1,127 @@
 package peer
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"sync"
+	"os"
+	"sort"
 	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
-type worker struct {
-	peerID string
-	peer   *types.Peer
-	client *Client
-
-	queue <-chan *types.BlockPlan
-}
-
-type Pool struct {
-	peerID    string
-	peers     *types.PeerSpec
-	available map[int]*worker
-	busy      map[int]*worker
-
-	done <-chan bool
-
-	sync.Mutex
-}
-
-func newWorker(peerID string, peer *types.Peer) *worker {
-	return &worker{
-		peerID: peerID,
-		peer:   peer,
-		client: NewClient(peerID),
-	}
-}
-
-func (w *worker) init(torrentHash [20]byte) error {
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	if err := w.client.Connect(ctx, w.peer); err != nil {
-		return fmt.Errorf("failed to connect to client: %v", err)
-	}
-
-	if _, err := w.client.Handshake(torrentHash); err != nil {
-		return fmt.Errorf("failed to perform handshake to client: %v", err)
-	}
-
-	return nil
-}
-
-func (w *worker) listen(q chan *types.BlockPlan, c chan *types.BlockPlan, quit chan bool) {
-	go func() {
-		for {
-			select {
-			case b := <-q:
-				{
-					_, _ = w.client.DownloadPiece(nil, 0)
-					c <- b
-				}
-			case <-quit:
-				return
-
-			}
-		}
-	}()
-}
-
 func NewPool(peerID string, peers *types.PeerSpec) *Pool {
 	workers := map[int]*worker{}
 	for idx, p := range peers.Peers {
-		workers[idx] = newWorker(peerID, p)
+		workers[idx] = newWorker(idx, peerID, p)
 	}
 	return &Pool{
 		peerID:    peerID,
 		peers:     peers,
 		available: workers,
+		errored:   map[int]*worker{},
+		ready:     map[int]*worker{},
 		done:      make(<-chan bool),
 	}
 }
 
-func (p *Pool) Init(torrent *types.Torrent) error {
-	wg := sync.WaitGroup{}
-
-	hash := torrent.Hash
-	errCh := make(chan error)
-	for _, w := range p.available {
-		wg.Add(1)
-		worker := w
-		go func() {
-			err := worker.init(hash)
-			if err != nil {
-				errCh <- err
-			}
-			wg.Done()
-		}()
+func (p *Pool) addPeerWorker(w *worker) {
+	p.Lock()
+	if w.Err != nil || !w.handshaked {
+		p.errored[w.ID] = w
+		delete(p.available, w.ID)
+	} else {
+		p.ready[w.ID] = w
 	}
-	// gather errors
-	errs := []error{}
-	go func() {
-		for err := range errCh {
-			errs = append(errs, err)
-		}
-	}()
-	wg.Wait()
-	close(errCh)
-
-	return errors.Join(errs...)
+	defer p.Unlock()
 }
 
-func (p *Pool) process(t *types.Torrent, blockSize int, dst string) {
-	blocks := t.AllBlockPlans(blockSize)
-
-	queue := make(chan *types.BlockPlan, 5)
-	complete := make(chan *types.BlockPlan, 1)
-	quit := make(chan bool)
+func (p *Pool) Init(torrent *types.Torrent) (bool, error) {
+	hash := torrent.Hash
+	tasks := []*Task{}
 	for _, w := range p.available {
-		go w.listen(queue, complete, quit)
+		worker := w
+		tasks = append(tasks, &Task{
+			Fn: func(r *reporter) error {
+				worker.Init(hash)
+				p.addPeerWorker(worker)
+				return worker.Err
+			},
+		})
 	}
 
-	blocksComplete := 0
-	inprogress := 0
-	blockIdx := 0
-	for blocksComplete != len(blocks) {
-		select {
-		case <-complete:
-			{
-				blocksComplete++
-			}
-		default:
-			{
-				for inprogress != 5 {
-					blockIdx++
-					queue <- blocks[blockIdx]
-					inprogress++
-				}
-			}
-		}
+	// we use a task pool to start the peer workers concurrently
+	tp := NewTaskPool(5)
+	tp.Init()
+	errC := tp.Process(tasks)
+	go func() {
+		errs := <-errC
+		fmt.Printf("some errors during peer start: %v\n", errors.Join(errs...))
+	}()
+	<-time.After(15 * time.Second)
+	tp.Close()
+
+	return len(p.ready) > 0, nil //errors.Join(errs...)
+}
+
+func (p *Pool) process(t *types.Torrent, blockSize int, dst string) error {
+	blocks := t.AllBlockPlans(blockSize)
+	fmt.Printf(`Summary:
+Peers: %d
+Available: %d
+Ready: %d
+Errored: %d
+Pieces: %d
+Blocks: %d
+`, len(p.peers.Peers), len(p.available), len(p.ready), len(p.errored), len(t.PieceHashes), len(blocks))
+
+	queue := make(chan *types.BlockPlan, 5)
+	complete := make(chan *types.Piece, 1)
+	quit := make(chan bool)
+	for _, w := range p.ready {
+		go w.Listen(queue, complete, quit)
+	}
+
+	for _, blk := range blocks {
+		queue <- blk
+	}
+
+	pieces := []*types.Piece{}
+	for r := range complete {
+		pieces = append(pieces, r)
+		fmt.Printf("%d/%d complete", r.Index, len(t.PieceHashes))
 	}
 	close(quit)
 	close(queue)
 	close(complete)
+
+	sort.Slice(pieces, func(i, j int) bool {
+		return pieces[i].Index < pieces[j].Index
+	})
+	fd, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer fd.Close()
+	for _, p := range pieces {
+		if _, err := fd.Write(p.Data); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
-func (p *Pool) Download(t *types.Torrent, blockSize int, dst string) {
-	go p.process(t, blockSize, dst)
+func (p *Pool) Download(t *types.Torrent, blockSize int, dst string) chan bool {
+	complete := make(chan bool)
+	go func() {
+		err := p.process(t, blockSize, dst)
+		if err != nil {
+			fmt.Printf("pool process failure: %v\n", err)
+		}
+		complete <- true
+	}()
+
+	return complete
 
 }

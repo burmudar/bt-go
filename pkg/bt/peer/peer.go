@@ -60,7 +60,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) Connect(ctx context.Context, p *types.Peer) error {
-	fmt.Printf("connecting to: %s\n", p.String())
+	c.announcef("connecting to: %s\n", p.String())
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", p.String())
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *Client) Connect(ctx context.Context, p *types.Peer) error {
 	c.conn = conn
 	c.bufrw = bufio.NewReadWriter(bufio.NewReader(c.conn), bufio.NewWriter(c.conn))
 
-	fmt.Printf("connected to: %s\n", p.String())
+	c.announcef("connected to: %s\n", p.String())
 
 	return nil
 }
@@ -80,6 +80,7 @@ func (c *Client) IsConnected() bool {
 }
 
 func (c *Client) send(data []byte) error {
+	c.announcef("sending %d\n", len(data))
 	if _, err := c.conn.Write(data); err != nil {
 		return fmt.Errorf("send failure: %w", err)
 	}
@@ -91,7 +92,7 @@ func (c *Client) Handshake(hash [20]byte) (*Handshake, error) {
 		return nil, fmt.Errorf("not connected")
 	}
 
-	fmt.Println("starting handshake ...")
+	c.announcef("starting handshake ...\n")
 
 	data, err := encodeHandshake(&Handshake{
 		PeerID: c.PeerID,
@@ -113,7 +114,7 @@ func (c *Client) Handshake(hash [20]byte) (*Handshake, error) {
 	if err == nil {
 		c.lastHandshake = h
 	}
-	fmt.Println("handshake complete...")
+	c.announcef("handshake complete...\n")
 
 	return h, err
 }
@@ -127,18 +128,18 @@ func (c *Client) waitForUnchoke() error {
 		select {
 		case <-ticker.C:
 			{
-				fmt.Println("sending \"interested\"")
+				c.announcef("sending \"interested\"\n")
 				data := EncodeMessage(interested)
 				if err := c.send(data); err != nil {
 					return err
 				}
-				fmt.Println("reading msg")
+				c.announcef("reading msg")
 				if msg, err := DecodeMessage(c.bufrw); err != nil {
 					return err
 				} else if msg.Tag() != UnchokeType {
-					fmt.Printf("waiting for unchoke - got %T\n", msg)
+					c.announcef("waiting for unchoke - got %T\n", msg)
 				} else {
-					fmt.Printf("received unchoke - %T\n", msg)
+					c.announcef("received unchoke - %T\n", msg)
 					ticker.Stop()
 					done.Stop()
 					return nil
@@ -169,7 +170,7 @@ func assembleData(blocks []*PieceBlock) []byte {
 }
 
 func (c *Client) BitField() (Message, error) {
-	fmt.Println("read bitfield message...")
+	c.announcef("read bitfield message...\n")
 	msg, err := DecodeMessage(c.bufrw)
 	if err != nil {
 		return nil, err
@@ -182,7 +183,19 @@ func (c *Client) BitField() (Message, error) {
 	return msg, nil
 }
 
-func (c *Client) DownloadPiece(t *types.Torrent, pIndex int) (*types.Piece, error) {
+func (c *Client) announcef(format string, vars ...any) {
+	peer := "unknown"
+	if c.Peer != nil {
+		peer = c.Peer.IP.String()
+	}
+	fmt.Printf("[%s] ", peer)
+	fmt.Printf(format, vars...)
+}
+
+func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
+	if c.Peer == nil {
+		panic("cannot download piece with nil peer")
+	}
 	// 1. bitfield
 	// 2. interested
 	// 3. unchoke
@@ -192,16 +205,16 @@ func (c *Client) DownloadPiece(t *types.Torrent, pIndex int) (*types.Piece, erro
 		return nil, err
 	}
 
-	plan := t.BlockPlan(pIndex, 16*1024)
 	downloaded := make([]*PieceBlock, plan.NumBlocks)
+	c.announcef("need to get %d blocks for piece %d\n", plan.NumBlocks, plan.PieceIndex)
 	for i := 0; i < plan.NumBlocks; i++ {
 		req := &PieceRequest{
-			Index:  pIndex,
+			Index:  plan.PieceIndex,
 			Begin:  i * plan.BlockSize,
 			Length: plan.BlockSizeFor(i),
 		}
 
-		fmt.Printf("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
+		c.announcef("requesting %d - Begin: %d Length: %d\n", req.Index, req.Begin, req.Length)
 		data := EncodeMessage(req)
 		if err := c.send(data); err != nil {
 			return nil, err
@@ -212,25 +225,31 @@ func (c *Client) DownloadPiece(t *types.Torrent, pIndex int) (*types.Piece, erro
 		}
 		switch m := msg.(type) {
 		case *KeepAlive:
-			fmt.Println("received keep alive")
+			c.announcef("received keep alive\n")
 		case *Choke:
-			fmt.Println("received choke")
+			c.announcef("received choke\n")
 			if err := c.waitForUnchoke(); err != nil {
 				return nil, err
 			}
 		case *PieceBlock:
 			{
-				fmt.Printf("received block %d for piece %d - Begin: %d Length: %d\n", i, m.Index, m.Begin, len(m.Data))
+				c.announcef("received block %d for piece %d - Begin: %d Length: %d\n", i, m.Index, m.Begin, len(m.Data))
 				downloaded[i] = m
+			}
+		default:
+			{
+				c.announcef("unknown msg received: %+v\n", msg)
 			}
 		}
 	}
 
+	c.announcef("fetched %d blocks for piece %d\n", plan.NumBlocks, plan.PieceIndex)
+
 	data := assembleData(downloaded)
 	piece := &types.Piece{
-		Index: pIndex,
+		Index: plan.PieceIndex,
 		Peer:  *c.Peer,
-		Size:  t.LengthOf(pIndex),
+		Size:  plan.PieceLength,
 		Data:  data,
 	}
 

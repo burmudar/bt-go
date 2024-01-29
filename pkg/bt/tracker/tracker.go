@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/encoding"
@@ -73,21 +72,6 @@ func newPeerRequest(peerID string, port int, m *types.Torrent) (*PeersRequest, e
 		Compact:  1,
 	}, nil
 
-}
-
-func percentEncode(data []byte) string {
-	var builder strings.Builder
-
-	for _, b := range data {
-		if (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') ||
-			b == '-' || b == '_' || b == '.' || b == '~' {
-			builder.WriteByte(b)
-		} else {
-			builder.WriteString(fmt.Sprintf("%%%d", b))
-		}
-	}
-
-	return builder.String()
 }
 
 func (p *PeersRequest) HTTPRequest() (*http.Request, error) {
@@ -215,16 +199,25 @@ func (t *TrackerClient) GetPeers(peerID string, port int, torrent *types.Torrent
 	if err != nil {
 		// TODO(burmudar): look into using this more
 		if len(torrent.AnnounceList) > 0 {
-			for i := 1; i <= len(torrent.AnnounceList) && (resp == nil && err != nil); i++ {
+			for i := 0; i < len(torrent.AnnounceList) && (resp == nil && err != nil); i++ {
 				req.Announce = torrent.AnnounceList[i]
 				resp, err = t.peersRequest(req)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("peers request failure: %v", err)
+				// } else {
+				// 	fmt.Printf("udp tracke request not supported: %s\n", torrent.AnnounceList[i])
+				// }
+				if err != nil {
+					err = fmt.Errorf("peers request failure: %v", err)
+				} else {
+					break
+				}
 			}
 		} else {
 			return nil, fmt.Errorf("peers request failure: %v", err)
 		}
+	}
+
+	if resp == nil && err != nil {
+		return nil, err
 	}
 	return &types.PeerSpec{
 		Peers:    resp.Peers,

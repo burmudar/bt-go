@@ -15,6 +15,7 @@ type FileInfo struct {
 }
 
 type BlockPlan struct {
+	PieceIndex     int
 	Hash           []byte
 	PieceLength    int
 	NumBlocks      int
@@ -129,6 +130,7 @@ func (m *Torrent) BlockPlan(pIndex, blockSize int) *BlockPlan {
 
 	numBlocks := bt.Ceil(pieceLength, blockSize)
 	return &BlockPlan{
+		PieceIndex:     pIndex,
 		Hash:           []byte(m.PieceHashes[pIndex]),
 		PieceLength:    pieceLength,
 		NumBlocks:      numBlocks,

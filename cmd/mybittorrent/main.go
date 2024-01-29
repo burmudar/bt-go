@@ -16,12 +16,15 @@ import (
 	"os"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/encoding"
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/manager"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/peer"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/tracker"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
 
 const PeerID = "00112233445566778899"
+
+//const PeerID = "burmtorrentclient"
 
 func printMetaInfo(m *types.Torrent) {
 	fmt.Printf("Tracker URL: %s\n", m.Announce)
@@ -121,7 +124,7 @@ func main() {
 			}
 			defer client.Close()
 
-			handshake, err := client.Handshake(t)
+			handshake, err := client.Handshake(t.Hash)
 			if err != nil {
 				FatalExit("%q handshake failed: %v", p.String(), err)
 			}
@@ -158,7 +161,8 @@ func main() {
 			}
 
 			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.PieceHashes[pieceIdx], t.PieceLength)
-			if b, err := client.DownloadPiece(t, pieceIdx); err != nil {
+			plan := t.BlockPlan(pieceIdx, 16*1024)
+			if b, err := client.DownloadPiece(plan); err != nil {
 				FatalExit("piece download failure: %v", err)
 			} else {
 				fmt.Printf("Piece %d downloaded successfully from peer %s [%x] (%d)\n", pieceIdx, client.Peer.String(), sha1.Sum(b.Data), len(b.Data))
@@ -169,6 +173,34 @@ func main() {
 				defer fd.Close()
 				io.Copy(fd, bytes.NewReader(b.Data))
 				fmt.Printf("Piece %d downloaded to %s\n", b.Index, dst)
+			}
+		}
+	case "dl":
+		{
+			torrentFile := os.Args[2]
+			t, err := encoding.DecodeTorrent(torrentFile)
+			if err != nil {
+				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
+			}
+			dst := os.Args[3]
+
+			m := manager.NewTorrentManager(PeerID)
+			if err := m.Download(t, dst); err != nil {
+				FatalExit("download failure: %v", err)
+			}
+		}
+	case "download":
+		{
+			torrentFile := os.Args[5]
+			t, err := encoding.DecodeTorrent(torrentFile)
+			if err != nil {
+				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
+			}
+			dst := os.Args[4]
+
+			m := manager.NewTorrentManager(PeerID)
+			if err := m.Download(t, dst); err != nil {
+				FatalExit("download failure: %v", err)
 			}
 		}
 	default:
