@@ -192,12 +192,12 @@ func main() {
 	case "download":
 		{
 			fmt.Printf("%+v", os.Args)
-			torrentFile := os.Args[3]
+			torrentFile := os.Args[4]
 			t, err := encoding.DecodeTorrent(torrentFile)
 			if err != nil {
 				FatalExit("failed to read torrent %q: %v", os.Args[3], err)
 			}
-			dst := os.Args[4]
+			dst := os.Args[3]
 
 			m := manager.NewTorrentManager(PeerID)
 			if err := m.Download(t, dst); err != nil {
