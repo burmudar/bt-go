@@ -12,4 +12,5 @@ tmpFile=$(mktemp)
 ( cd $(dirname "$0") &&
 	go build -o "$tmpFile" ./cmd/mybittorrent )
 
+export DEBUG=1
 exec "$tmpFile" "$@"
