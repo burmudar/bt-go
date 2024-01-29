@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"sync"
 	"time"
 
 	"go.uber.org/multierr"
@@ -83,18 +84,30 @@ Blocks: %d
 		go w.Listen(queue, complete, quit)
 	}
 
+	wg := sync.WaitGroup{}
+	pieces := []*types.Piece{}
+
+	wg.Add(1)
+	go func() {
+		left := len(blocks)
+		for left > 0 {
+			result := <-complete
+			if result != nil {
+				pieces = append(pieces, result)
+			} else {
+				fmt.Printf("[WARN] nil piece as result received\n")
+			}
+			fmt.Printf("[%d/%d] complete\n", result.Index, len(blocks))
+			left--
+		}
+		wg.Done()
+	}()
+
 	for _, blk := range blocks {
 		queue <- blk
 	}
 
-	pieces := []*types.Piece{}
-	left := len(blocks)
-	for left > 0 {
-		result := <-complete
-		pieces = append(pieces, result)
-		fmt.Printf("[%d/%d] complete\n", result.Index, len(blocks))
-		left--
-	}
+	wg.Wait()
 	close(quit)
 	close(queue)
 	close(complete)

@@ -45,6 +45,7 @@ type Piece struct {
 	Peer  Peer
 	Size  int
 	Data  []byte
+	Hash  [20]byte
 }
 
 func ParsePeer(v string) (*Peer, error) {

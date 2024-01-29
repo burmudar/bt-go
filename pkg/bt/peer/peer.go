@@ -3,6 +3,7 @@ package peer
 import (
 	"bufio"
 	"context"
+	"crypto/sha1"
 	"fmt"
 	"net"
 	"os"
@@ -197,6 +198,22 @@ func (c *Client) announcef(format string, vars ...any) {
 	}
 }
 
+func (c *Client) Have(index int) error {
+	req := &Have{Index: index}
+	c.announcef("Have %d index\n", index)
+	data := EncodeMessage(req)
+	if err := c.send(data); err != nil {
+		return err
+	}
+	// msg, err := DecodeMessage(c.bufrw)
+	// if err != nil {
+	// 	return err
+	// }
+	//
+	// c.announcef("(HAVE) recieved message %T", msg)
+	return nil
+}
+
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	if c.Peer == nil {
 		panic("cannot download piece with nil peer")
@@ -256,6 +273,7 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		Peer:  *c.Peer,
 		Size:  plan.PieceLength,
 		Data:  data,
+		Hash:  sha1.Sum(data),
 	}
 
 	return piece, nil

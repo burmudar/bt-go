@@ -1,6 +1,7 @@
 package peer
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -66,6 +67,7 @@ func (w *worker) Init(torrentHash [20]byte) {
 
 func (w *worker) announcef(format string, vars ...any) {
 	if w.debug {
+		fmt.Printf("[worker-%d] ", w.ID)
 		fmt.Printf(format, vars...)
 	}
 }
@@ -77,14 +79,22 @@ func (w *worker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan 
 			select {
 			case blk := <-q:
 				{
+					w.announcef("processing piece %d\n", blk.PieceIndex)
 					piece, err := w.client.DownloadPiece(blk)
 					if err != nil {
-						w.announcef("worker-%d error: %v\n", w.ID, err)
-						break loop
+						w.announcef("error: %v\n", err)
+						c <- nil
+					} else {
+						if !bytes.Equal(piece.Hash[:], blk.Hash) {
+							w.announcef("WARN incorrect hash for piece %d: %x != %x", blk.PieceIndex, piece.Hash[:], blk.Hash)
+						} else {
+							w.client.Have(blk.PieceIndex)
+						}
+
+						w.announcef("sending completed piece %d\n", piece.Index)
+						c <- piece
+						w.announcef("download of piece %x complete\n", blk.Hash)
 					}
-					c <- piece
-					w.announcef("worker-%d download of piece %x complete\n", w.ID, blk.Hash)
-					break loop
 				}
 			case <-quit:
 				break loop

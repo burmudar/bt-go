@@ -46,7 +46,9 @@ type Choke struct{}
 type Unchoke struct{}
 type Interested struct{}
 type NotInterested struct{}
-type Have struct{}
+type Have struct {
+	Index int
+}
 type BitField struct {
 	Field []byte
 }
@@ -120,7 +122,11 @@ func (h *Have) Equal(m Message) bool {
 	return ok
 }
 func (h *Have) Tag() MessageTag { return HaveType }
-func (h *Have) Payload() []byte { return nil }
+func (h *Have) Payload() []byte {
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data[0:4], uint32(h.Index))
+	return data
+}
 
 func (b *BitField) Equal(m Message) bool {
 	v, ok := m.(*BitField)
