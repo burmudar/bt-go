@@ -2,6 +2,7 @@ package peer
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 )
@@ -40,13 +41,15 @@ func (r *reporter) listen(stop chan bool) {
 		return
 	}
 	r.listening = true
-	fmt.Println("reporter listening")
+	debug := os.Getenv("DEBUG") == "1"
 	go func() {
 		for {
 			select {
 			case s := <-r.c:
 				{
-					fmt.Println(s)
+					if debug {
+						fmt.Println(s)
+					}
 				}
 			case <-stop:
 				{
@@ -96,9 +99,9 @@ func (tp *TaskPool) Init() {
 				select {
 				case t := <-tp.queue:
 					{
-						fmt.Printf("[runner %d] processing\n", w)
+						tp.reporter.L("[runner %d] processing\n", w)
 						t.Done <- t.Fn(tp.reporter)
-						fmt.Printf("[runner %d] done\n", w)
+						tp.reporter.L("[runner %d] done\n", w)
 					}
 				case <-tp.stopC:
 					return

@@ -1,11 +1,12 @@
 package peer
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"time"
+
+	"go.uber.org/multierr"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
@@ -42,7 +43,7 @@ func (p *Pool) Init(torrent *types.Torrent) (bool, error) {
 	for _, w := range p.available {
 		worker := w
 		tasks = append(tasks, &Task{
-			Fn: func(r *reporter) error {
+			Fn: func(_ *reporter) error {
 				worker.Init(hash)
 				p.addPeerWorker(worker)
 				return worker.Err
@@ -56,7 +57,7 @@ func (p *Pool) Init(torrent *types.Torrent) (bool, error) {
 	errC := tp.Process(tasks)
 	go func() {
 		errs := <-errC
-		fmt.Printf("some errors during peer start: %v\n", errors.Join(errs...))
+		fmt.Printf("some errors during peer start: %v\n", multierr.Combine(errs...))
 	}()
 	<-time.After(15 * time.Second)
 	tp.Close()

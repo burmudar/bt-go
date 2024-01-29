@@ -191,10 +191,11 @@ func main() {
 		}
 	case "download":
 		{
-			torrentFile := os.Args[5]
+			fmt.Printf("%+v", os.Args)
+			torrentFile := os.Args[3]
 			t, err := encoding.DecodeTorrent(torrentFile)
 			if err != nil {
-				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
+				FatalExit("failed to read torrent %q: %v", os.Args[3], err)
 			}
 			dst := os.Args[4]
 
@@ -202,6 +203,7 @@ func main() {
 			if err := m.Download(t, dst); err != nil {
 				FatalExit("download failure: %v", err)
 			}
+			fmt.Printf("downloaded %s to %s\n", torrentFile, dst)
 		}
 	default:
 		{

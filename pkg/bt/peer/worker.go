@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 var ErrHandshake = fmt.Errorf("failed to perform handshake")
 
 type worker struct {
+	debug      bool
 	ID         int
 	peerID     string
 	peer       *types.Peer
@@ -36,6 +38,7 @@ type Pool struct {
 
 func newWorker(id int, peerID string, peer *types.Peer) *worker {
 	return &worker{
+		debug:  os.Getenv("DEBUG") == "1",
 		ID:     id,
 		peerID: peerID,
 		peer:   peer,
@@ -48,19 +51,23 @@ func (w *worker) Init(torrentHash [20]byte) {
 	defer cancel()
 
 	if err := w.client.Connect(ctx, w.peer); err != nil {
-		fmt.Printf("failed to connect to client: %v\n", err)
 		w.Err = err
 		return
 	}
 
 	if _, err := w.client.Handshake(torrentHash); err != nil {
-		fmt.Printf("[worker-%d] failed to perform handshake to client: %v\n", w.ID, err)
 		w.Err = ErrHandshake
 		return
 	}
 
 	w.handshaked = true
 
+}
+
+func (w *worker) announcef(format string, vars ...any) {
+	if w.debug {
+		fmt.Printf(format, vars...)
+	}
 }
 
 func (w *worker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan bool) {
@@ -72,11 +79,11 @@ func (w *worker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan 
 				{
 					piece, err := w.client.DownloadPiece(blk)
 					if err != nil {
-						fmt.Printf("worker-%d error: %v\n", w.ID, err)
+						w.announcef("worker-%d error: %v\n", w.ID, err)
 						break loop
 					}
 					c <- piece
-					fmt.Printf("worker-%d download of piece %x complete\n", w.ID, blk.Hash)
+					w.announcef("worker-%d download of piece %x complete\n", w.ID, blk.Hash)
 					break loop
 				}
 			case <-quit:
@@ -84,6 +91,6 @@ func (w *worker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan 
 
 			}
 		}
-		fmt.Printf("worker-%d stopped\n", w.ID)
+		w.announcef("worker-%d stopped\n", w.ID)
 	}()
 }

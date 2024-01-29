@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"sort"
 	"time"
 
@@ -18,6 +19,7 @@ const (
 )
 
 type Client struct {
+	debug         bool
 	PeerID        string
 	Peer          *types.Peer
 	conn          net.Conn
@@ -32,6 +34,7 @@ func (c *Client) writeMessage(msg Message) error {
 
 func NewClient(peerID string) *Client {
 	return &Client{
+		debug:  os.Getenv("DEBUG") == "1",
 		PeerID: peerID,
 	}
 }
@@ -184,12 +187,14 @@ func (c *Client) BitField() (Message, error) {
 }
 
 func (c *Client) announcef(format string, vars ...any) {
-	peer := "unknown"
-	if c.Peer != nil {
-		peer = c.Peer.IP.String()
+	if c.debug {
+		peer := "unknown"
+		if c.Peer != nil {
+			peer = c.Peer.IP.String()
+		}
+		fmt.Printf("[%s] ", peer)
+		fmt.Printf(format, vars...)
 	}
-	fmt.Printf("[%s] ", peer)
-	fmt.Printf(format, vars...)
 }
 
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
