@@ -88,9 +88,12 @@ Blocks: %d
 	}
 
 	pieces := []*types.Piece{}
-	for r := range complete {
-		pieces = append(pieces, r)
-		fmt.Printf("%d/%d complete", r.Index, len(t.PieceHashes))
+	left := len(blocks)
+	for left > 0 {
+		result := <-complete
+		pieces = append(pieces, result)
+		fmt.Printf("[%d/%d] complete\n", result.Index, len(blocks))
+		left--
 	}
 	close(quit)
 	close(queue)
