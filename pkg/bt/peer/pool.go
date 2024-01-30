@@ -13,21 +13,21 @@ import (
 )
 
 func NewPool(peerID string, peers *types.PeerSpec) *Pool {
-	workers := map[int]*worker{}
+	workers := map[int]*PeerWorker{}
 	for idx, p := range peers.Peers {
-		workers[idx] = newWorker(idx, peerID, p)
+		workers[idx] = newPeerWorker(idx, peerID, p)
 	}
 	return &Pool{
 		peerID:    peerID,
 		peers:     peers,
 		available: workers,
-		errored:   map[int]*worker{},
-		ready:     map[int]*worker{},
+		errored:   map[int]*PeerWorker{},
+		ready:     map[int]*PeerWorker{},
 		done:      make(<-chan bool),
 	}
 }
 
-func (p *Pool) addPeerWorker(w *worker) {
+func (p *Pool) addPeerWorker(w *PeerWorker) {
 	p.Lock()
 	if w.Err != nil || !w.handshaked {
 		p.errored[w.ID] = w

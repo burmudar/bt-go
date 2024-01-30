@@ -13,7 +13,7 @@ import (
 
 var ErrHandshake = fmt.Errorf("failed to perform handshake")
 
-type worker struct {
+type PeerWorker struct {
 	debug      bool
 	ID         int
 	peerID     string
@@ -28,17 +28,17 @@ type worker struct {
 type Pool struct {
 	peerID    string
 	peers     *types.PeerSpec
-	available map[int]*worker
-	ready     map[int]*worker
-	errored   map[int]*worker
+	available map[int]*PeerWorker
+	ready     map[int]*PeerWorker
+	errored   map[int]*PeerWorker
 
 	done <-chan bool
 
 	sync.Mutex
 }
 
-func newWorker(id int, peerID string, peer *types.Peer) *worker {
-	return &worker{
+func newPeerWorker(id int, peerID string, peer *types.Peer) *PeerWorker {
+	return &PeerWorker{
 		debug:  os.Getenv("DEBUG") == "1",
 		ID:     id,
 		peerID: peerID,
@@ -47,32 +47,32 @@ func newWorker(id int, peerID string, peer *types.Peer) *worker {
 	}
 }
 
-func (w *worker) Init(torrentHash [20]byte) {
+func (w *PeerWorker) Init(torrentHash [20]byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
 	if err := w.client.Connect(ctx, w.peer); err != nil {
-		w.Err = err
-		return
+		return err
 	}
 
 	if _, err := w.client.Handshake(torrentHash); err != nil {
 		w.Err = ErrHandshake
-		return
+		return err
 	}
 
 	w.handshaked = true
+	return nil
 
 }
 
-func (w *worker) announcef(format string, vars ...any) {
+func (w *PeerWorker) announcef(format string, vars ...any) {
 	if w.debug {
 		fmt.Printf("[worker-%d] ", w.ID)
 		fmt.Printf(format, vars...)
 	}
 }
 
-func (w *worker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan bool) {
+func (w *PeerWorker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan bool) {
 	go func() {
 	loop:
 		for {
