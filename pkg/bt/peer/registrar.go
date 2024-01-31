@@ -39,7 +39,11 @@ func (rr *registrar[K, V]) Get(k K) ([]V, bool) {
 	}
 }
 
-func (rr *registrar[K, V]) Rem(k K, v V) {
+func (rr *registrar[K, V]) Len() int {
+	return len(rr.items)
+}
+
+func (rr *registrar[K, V]) Del(k K, v V) {
 	rr.Lock()
 	defer rr.Unlock()
 	s, ok := rr.items[k]

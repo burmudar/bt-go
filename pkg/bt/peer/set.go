@@ -6,6 +6,7 @@ var _sentinel = struct{}{}
 
 type Set[K comparable] interface {
 	All() []K
+	Len() int
 	Put(key K)
 	Has(key K) bool
 	Del(key K)
@@ -60,10 +61,14 @@ func NewSyncSet[K comparable]() Set[K] {
 
 func (s *BasicSet[K]) All() []K {
 	all := []K{}
-	for k, _ := range s.items {
+	for k := range s.items {
 		all = append(all, k)
 	}
 	return all
+}
+
+func (s *BasicSet[K]) Len() int {
+	return len(s.items)
 }
 
 func (s *BasicSet[K]) Put(v K) {

@@ -12,95 +12,157 @@ import (
 )
 
 var ErrHandshake = fmt.Errorf("failed to perform handshake")
+var ErrPieceHashMismatch = fmt.Errorf("hash mismatch")
+var ErrChocked = fmt.Errorf("Peer is choked")
 
-type PeerWorker struct {
+type PeerHandler struct {
 	debug      bool
 	ID         int
 	peerID     string
 	peer       *types.Peer
 	client     *Client
+	peerPieces Set[int]
 	handshaked bool
 	Err        error
-
-	queue <-chan *types.BlockPlan
 }
 
 type Pool struct {
 	peerID    string
 	peers     *types.PeerSpec
-	available map[int]*PeerWorker
-	ready     map[int]*PeerWorker
-	errored   map[int]*PeerWorker
+	available map[int]*PeerHandler
+	ready     map[int]*PeerHandler
+	errored   map[int]*PeerHandler
 
 	done <-chan bool
 
 	sync.Mutex
 }
 
-func newPeerWorker(id int, peerID string, peer *types.Peer) *PeerWorker {
-	return &PeerWorker{
-		debug:  os.Getenv("DEBUG") == "1",
-		ID:     id,
-		peerID: peerID,
-		peer:   peer,
-		client: NewClient(peerID),
+func newPeerHandler(id int, peerID string, peer *types.Peer) *PeerHandler {
+	return &PeerHandler{
+		debug:      os.Getenv("DEBUG") == "1",
+		ID:         id,
+		peerID:     peerID,
+		peer:       peer,
+		client:     NewClient(peerID),
+		peerPieces: NewSet[int](),
 	}
 }
 
-func (w *PeerWorker) Init(torrentHash [20]byte) error {
+func (p *PeerHandler) Init(torrentHash [20]byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if err := w.client.Connect(ctx, w.peer); err != nil {
+	if err := p.client.Connect(ctx, p.peer); err != nil {
 		return err
 	}
 
-	if _, err := w.client.Handshake(torrentHash); err != nil {
-		w.Err = ErrHandshake
+	if _, err := p.client.Handshake(torrentHash); err != nil {
 		return err
 	}
 
-	w.handshaked = true
+	if msg, err := p.client.ReadBitField(); err != nil {
+		p.announcef("bitfield read error: %v\n", err)
+	} else {
+		p.updatePeerPiecesFromBitField(msg.Payload())
+	}
+
+	p.handshaked = true
 	return nil
 
 }
 
-func (w *PeerWorker) announcef(format string, vars ...any) {
-	if w.debug {
-		fmt.Printf("[worker-%d] ", w.ID)
+func (p *PeerHandler) waitForUnchoke() error {
+	ticker := time.NewTicker(1 * time.Second)
+	done := time.NewTimer(30 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+			{
+				p.announcef("sending \"interested\"\n")
+				p.client.Interested()
+				p.announcef("reading msg")
+				if msg, err := p.client.ReadMsg(); err != nil {
+					return err
+				} else if msg.Tag() != UnchokeType {
+					p.announcef("waiting for unchoke - got %T\n", msg)
+				} else {
+					p.announcef("received unchoke - %T\n", msg)
+					ticker.Stop()
+					done.Stop()
+					return nil
+				}
+			}
+		case <-done.C:
+			{
+				ticker.Stop()
+				done.Stop()
+				return fmt.Errorf("failed to unchoke after 30 seconds")
+			}
+		}
+	}
+}
+
+func (p *PeerHandler) updatePeerPiecesFromBitField(field []byte) {
+	for i, val := range field {
+		// check each bit in val
+		for j := 0; j < 8; j++ {
+			if val&(1<<(7-j)) != 0 {
+				idx := i*8 + j
+				p.peerPieces.Put(idx)
+			}
+		}
+	}
+
+	p.announcef("peer reports %d pieces from BitField\n", p.peerPieces.Len())
+}
+
+func (p *PeerHandler) announcef(format string, vars ...any) {
+	if p.debug {
+		fmt.Printf("[worker-%d] ", p.ID)
 		fmt.Printf(format, vars...)
 	}
 }
 
-func (w *PeerWorker) Listen(q chan *types.BlockPlan, c chan *types.Piece, quit chan bool) {
+// TODO: accept context
+func (p *PeerHandler) DownloadPiece(blk *types.BlockPlan) *types.PieceDownloadResult {
+	result := types.PieceDownloadResult{Plan: blk}
+	piece, err := p.client.DownloadPiece(blk)
+	if err != nil {
+		result.Err = err
+		return &result
+	}
+	if !bytes.Equal(piece.Hash[:], blk.Hash) {
+		result.Err = ErrPieceHashMismatch
+		return &result
+	}
+	result.Result = piece
+
+	p.client.Have(blk.PieceIndex)
+
+	return &result
+}
+
+func (p *PeerHandler) QueryPieces() []int {
+	return p.peerPieces.All()
+}
+
+func (p *PeerHandler) Listen(q chan *types.BlockPlan, c chan *types.PieceDownloadResult, quit chan bool) {
 	go func() {
 	loop:
 		for {
 			select {
 			case blk := <-q:
 				{
-					w.announcef("processing piece %d\n", blk.PieceIndex)
-					piece, err := w.client.DownloadPiece(blk)
-					if err != nil {
-						w.announcef("error: %v\n", err)
-						c <- nil
-					} else {
-						if !bytes.Equal(piece.Hash[:], blk.Hash) {
-							w.announcef("WARN incorrect hash for piece %d: %x != %x", blk.PieceIndex, piece.Hash[:], blk.Hash)
-						} else {
-							w.client.Have(blk.PieceIndex)
-						}
-
-						w.announcef("sending completed piece %d\n", piece.Index)
-						c <- piece
-						w.announcef("download of piece %x complete\n", blk.Hash)
-					}
+					c <- p.DownloadPiece(blk)
+					p.announcef("processed piece %d\n", blk.PieceIndex)
 				}
 			case <-quit:
 				break loop
 
 			}
 		}
-		w.announcef("worker-%d stopped\n", w.ID)
+		p.announcef("stopped\n", p.ID)
 	}()
 }

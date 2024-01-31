@@ -48,6 +48,12 @@ type Piece struct {
 	Hash  [20]byte
 }
 
+type PieceDownloadResult struct {
+	Plan   *BlockPlan
+	Result *Piece
+	Err    error
+}
+
 func ParsePeer(v string) (*Peer, error) {
 	parts := strings.Split(v, ":")
 	println(v)

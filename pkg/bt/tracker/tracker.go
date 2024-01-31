@@ -202,9 +202,6 @@ func (t *TrackerClient) GetPeers(peerID string, port int, torrent *types.Torrent
 			for i := 0; i < len(torrent.AnnounceList) && (resp == nil && err != nil); i++ {
 				req.Announce = torrent.AnnounceList[i]
 				resp, err = t.peersRequest(req)
-				// } else {
-				// 	fmt.Printf("udp tracke request not supported: %s\n", torrent.AnnounceList[i])
-				// }
 				if err != nil {
 					err = fmt.Errorf("peers request failure: %v", err)
 				} else {

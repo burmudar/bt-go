@@ -156,7 +156,7 @@ func main() {
 				FatalExit("failed to create handshaked peer client: %v", err)
 			}
 
-			if _, err := client.BitField(); err != nil {
+			if _, err := client.ReadBitField(); err != nil {
 				FatalExit("failed to connect to client: %v", err)
 			}
 
@@ -175,7 +175,7 @@ func main() {
 				fmt.Printf("Piece %d downloaded to %s\n", b.Index, dst)
 			}
 		}
-	case "dl":
+	case "test":
 		{
 			torrentFile := os.Args[2]
 			t, err := encoding.DecodeTorrent(torrentFile)

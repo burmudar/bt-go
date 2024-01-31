@@ -24,7 +24,7 @@ func NewTorrentManager(peerID string) *TorrentManager {
 	}
 }
 
-func (tm *TorrentManager) newPeerPool(t *types.Torrent) (*peer.Pool, error) {
+func (tm *TorrentManager) newPeerManager(t *types.Torrent) (*peer.PeerManager, error) {
 	fmt.Println("getting peers ...")
 	peers, err := tm.Tracker.GetPeers(tm.PeerID, 6881, t)
 	if err != nil {
@@ -33,25 +33,20 @@ func (tm *TorrentManager) newPeerPool(t *types.Torrent) (*peer.Pool, error) {
 
 	fmt.Println("Peers ", len(peers.Peers))
 
-	return peer.NewPool(tm.PeerID, peers), nil
+	return peer.NewPeerManager(tm.PeerID, peers.Peers), nil
 }
 
 func (tm *TorrentManager) Download(torrent *types.Torrent, dst string) error {
-	p, err := tm.newPeerPool(torrent)
+	p, err := tm.newPeerManager(torrent)
 	if err != nil {
 		return err
 	}
 
-	fmt.Println("initializing peer pool")
-	if canProcess, err := p.Init(torrent); !canProcess && err != nil {
+	fmt.Println("initializing peer manager")
+	if err := p.Init(torrent.Hash); err != nil {
 		return err
-	} else if err != nil {
-		fmt.Printf("some errors occured during pool initialization: %v\n", err)
 	}
 	fmt.Println("peer pool initialized")
 
-	fmt.Println("starting download")
-	<-p.Download(torrent, 16*1024, dst)
-	fmt.Println("download complete")
 	return nil
 }

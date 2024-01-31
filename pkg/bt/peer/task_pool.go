@@ -64,7 +64,8 @@ func (r *reporter) listen(stop chan bool) {
 }
 
 type Task struct {
-	Done chan error
+	ID   int
+	done chan error
 	Fn   func(r *reporter) error
 }
 
@@ -72,6 +73,7 @@ type TaskPool struct {
 	size     int
 	reporter *reporter
 	queue    chan *Task
+	complete chan error
 	stopC    chan bool
 	stop     atomic.Bool
 
@@ -99,9 +101,13 @@ func (tp *TaskPool) Init() {
 				select {
 				case t := <-tp.queue:
 					{
-						tp.reporter.L("[runner %d] processing\n", w)
-						t.Done <- t.Fn(tp.reporter)
-						tp.reporter.L("[runner %d] done\n", w)
+						defer tp.reporter.L("[runner %d] task %d done\n", w, t.ID)
+						tp.reporter.L("[runner %d] processing task %d\n", w, t.ID)
+						err := t.Fn(tp.reporter)
+						if err != nil {
+							tp.reporter.L("[runner %d] task %d error: %v\n", w, t.ID, err)
+						}
+						t.done <- err
 					}
 				case <-tp.stopC:
 					return
@@ -120,7 +126,6 @@ func (tp *TaskPool) Single(t *Task) chan error {
 	}
 	d := make(chan error)
 	go func() {
-		t.Done = d
 		select {
 		case <-tp.stopC:
 			return
@@ -149,10 +154,10 @@ func (tp *TaskPool) Process(tasks []*Task) chan []error {
 	errs := []error{}
 	go func() {
 		for i, t := range tasks {
+			t.done = done
 			if tp.stop.Load() {
 				return
 			}
-			t.Done = done
 			select {
 			case <-tp.stopC:
 				{
@@ -160,16 +165,33 @@ func (tp *TaskPool) Process(tasks []*Task) chan []error {
 				}
 			case tp.queue <- t:
 				{
-					tp.reporter.L("task %d added", i)
+					tp.reporter.L("[pool] %d:task-%d <-", i, t.ID)
 				}
 			}
 		}
+		fmt.Printf("%d tasks added to pool", len(tasks))
 	}()
 
 	go func() {
-		for err := range done {
-			if err != nil {
-				errs = append(errs, err)
+		count := 0
+	loop:
+		for {
+			select {
+			case err := <-done:
+				{
+					count++
+					fmt.Printf("[%d/%d] tasks complete\n", count, len(tasks))
+					if err != nil {
+						errs = append(errs, err)
+					}
+					if count == len(tasks) {
+						break loop
+					}
+				}
+			case <-tp.stopC:
+				{
+					break loop
+				}
 			}
 		}
 		completed <- errs

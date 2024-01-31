@@ -13,21 +13,21 @@ import (
 )
 
 func NewPool(peerID string, peers *types.PeerSpec) *Pool {
-	workers := map[int]*PeerWorker{}
+	workers := map[int]*PeerHandler{}
 	for idx, p := range peers.Peers {
-		workers[idx] = newPeerWorker(idx, peerID, p)
+		workers[idx] = newPeerHandler(idx, peerID, p)
 	}
 	return &Pool{
 		peerID:    peerID,
 		peers:     peers,
 		available: workers,
-		errored:   map[int]*PeerWorker{},
-		ready:     map[int]*PeerWorker{},
+		errored:   map[int]*PeerHandler{},
+		ready:     map[int]*PeerHandler{},
 		done:      make(<-chan bool),
 	}
 }
 
-func (p *Pool) addPeerWorker(w *PeerWorker) {
+func (p *Pool) addPeerWorker(w *PeerHandler) {
 	p.Lock()
 	if w.Err != nil || !w.handshaked {
 		p.errored[w.ID] = w
@@ -78,7 +78,7 @@ Blocks: %d
 `, len(p.peers.Peers), len(p.available), len(p.ready), len(p.errored), len(t.PieceHashes), len(blocks))
 
 	queue := make(chan *types.BlockPlan, 5)
-	complete := make(chan *types.Piece, 1)
+	complete := make(chan *types.PieceDownloadResult, 1)
 	quit := make(chan bool)
 	for _, w := range p.ready {
 		go w.Listen(queue, complete, quit)
@@ -92,12 +92,12 @@ Blocks: %d
 		left := len(blocks)
 		for left > 0 {
 			result := <-complete
-			if result != nil {
-				pieces = append(pieces, result)
-			} else {
-				fmt.Printf("[WARN] nil piece as result received\n")
+			if result.Err != nil {
+				fmt.Printf("error downloading piece: %v\n", result.Err)
+				queue <- result.Plan
 			}
-			fmt.Printf("[%d/%d] complete\n", result.Index, len(blocks))
+			pieces = append(pieces, result.Result)
+			fmt.Printf("[%d/%d] complete\n", result.Plan.PieceIndex, len(blocks))
 			left--
 		}
 		wg.Done()

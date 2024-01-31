@@ -123,42 +123,6 @@ func (c *Client) Handshake(hash [20]byte) (*Handshake, error) {
 	return h, err
 }
 
-func (c *Client) waitForUnchoke() error {
-	ticker := time.NewTicker(1 * time.Second)
-	done := time.NewTimer(30 * time.Second)
-
-	interested := &Interested{}
-	for {
-		select {
-		case <-ticker.C:
-			{
-				c.announcef("sending \"interested\"\n")
-				data := EncodeMessage(interested)
-				if err := c.send(data); err != nil {
-					return err
-				}
-				c.announcef("reading msg")
-				if msg, err := DecodeMessage(c.bufrw); err != nil {
-					return err
-				} else if msg.Tag() != UnchokeType {
-					c.announcef("waiting for unchoke - got %T\n", msg)
-				} else {
-					c.announcef("received unchoke - %T\n", msg)
-					ticker.Stop()
-					done.Stop()
-					return nil
-				}
-			}
-		case <-done.C:
-			{
-				ticker.Stop()
-				done.Stop()
-				return fmt.Errorf("failed to unchoke after 30 seconds")
-			}
-		}
-	}
-}
-
 func assembleData(blocks []*PieceBlock) []byte {
 	sort.Slice(blocks, func(i, j int) bool {
 		return blocks[i].Begin < blocks[j].Begin
@@ -173,7 +137,23 @@ func assembleData(blocks []*PieceBlock) []byte {
 	return result
 }
 
-func (c *Client) BitField() (Message, error) {
+func (c *Client) Interested() error {
+	data := EncodeMessage(&Interested{})
+	if err := c.send(data); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Client) ReadMsg() (Message, error) {
+	msg, err := DecodeMessage(c.bufrw)
+	if err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func (c *Client) ReadBitField() (Message, error) {
 	c.announcef("read bitfield message...\n")
 	msg, err := DecodeMessage(c.bufrw)
 	if err != nil {
@@ -202,16 +182,7 @@ func (c *Client) Have(index int) error {
 	req := &Have{Index: index}
 	c.announcef("Have %d index\n", index)
 	data := EncodeMessage(req)
-	if err := c.send(data); err != nil {
-		return err
-	}
-	// msg, err := DecodeMessage(c.bufrw)
-	// if err != nil {
-	// 	return err
-	// }
-	//
-	// c.announcef("(HAVE) recieved message %T", msg)
-	return nil
+	return c.send(data)
 }
 
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
@@ -223,9 +194,6 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	// 3. unchoke
 	// 4. request
 	// 5. piece
-	if err := c.waitForUnchoke(); err != nil {
-		return nil, err
-	}
 
 	downloaded := make([]*PieceBlock, plan.NumBlocks)
 	c.announcef("need to get %d blocks for piece %d\n", plan.NumBlocks, plan.PieceIndex)
@@ -249,10 +217,7 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		case *KeepAlive:
 			c.announcef("received keep alive\n")
 		case *Choke:
-			c.announcef("received choke\n")
-			if err := c.waitForUnchoke(); err != nil {
-				return nil, err
-			}
+			return nil, ErrChocked
 		case *PieceBlock:
 			{
 				c.announcef("received block %d for piece %d - Begin: %d Length: %d\n", i, m.Index, m.Begin, len(m.Data))
