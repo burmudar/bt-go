@@ -1,6 +1,9 @@
 package peer
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 	"github.com/jackc/puddle"
 )
@@ -11,18 +14,20 @@ type Pool struct {
 	puddle.Pool
 }
 
-func toSet(peers *types.PeerSpec) types.Set[string] {
-	s := types.NewSyncSet[string]()
-	for _, p := range peers.Peers {
-		key := p.String()
-		s.Put(key)
-	}
-
-	return s
-}
-
 func NewPool(peerID string, peers *types.PeerSpec) *Pool {
-	peerSet := types.NewSet[string]()
+	peerQueue := types.NewSyncQueue[*types.Peer]()
+	peerQueue.AddAll(peers.Peers...)
+
+	var ctor puddle.Constructor = func(ctx context.Context) (interface{}, error) {
+		_, ok := peerQueue.Pop()
+		if !ok {
+			return nil, fmt.Errorf("not peers left to construct")
+		}
+
+		// TODO: user peer
+
+		return nil, nil
+	}
 
 	return &Pool{
 		peerID: peerID,
