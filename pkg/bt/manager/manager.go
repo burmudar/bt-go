@@ -48,5 +48,12 @@ func (tm *TorrentManager) Download(torrent *types.Torrent, dst string) error {
 	}
 	fmt.Println("peer pool initialized")
 
+	pieces, err := p.Download(torrent.AllBlockPlans(types.DefaultBlockSize))
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("%d pieces downloaded", len(pieces))
+
 	return nil
 }

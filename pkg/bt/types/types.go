@@ -9,6 +9,8 @@ import (
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 )
 
+const DefaultBlockSize = 16 * 1024
+
 type FileInfo struct {
 	Length int
 	Paths  []string

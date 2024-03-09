@@ -2,15 +2,8 @@ package peer
 
 import "sync"
 
-type registration[K comparable, V comparable] struct {
-	Key   K
-	Value V
-}
-
 type registrar[K comparable, V comparable] struct {
 	items map[K]Set[V]
-
-	C chan registration[K, V]
 
 	sync.Mutex
 }
@@ -18,13 +11,6 @@ type registrar[K comparable, V comparable] struct {
 func newRegistrar[K comparable, V comparable]() *registrar[K, V] {
 	return &registrar[K, V]{
 		items: map[K]Set[V]{},
-		C:     make(chan registration[K, V]),
-	}
-}
-
-func (rr *registrar[K, V]) listen() {
-	for r := range rr.C {
-		rr.Add(r.Key, r.Value)
 	}
 }
 

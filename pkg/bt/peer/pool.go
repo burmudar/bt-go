@@ -1,13 +1,12 @@
 package peer
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sort"
 	"sync"
 	"time"
-
-	"go.uber.org/multierr"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 )
@@ -40,30 +39,32 @@ func (p *Pool) addPeerWorker(w *PeerHandler) {
 
 func (p *Pool) Init(torrent *types.Torrent) (bool, error) {
 	hash := torrent.Hash
-	tasks := []*Task{}
+	tp := NewTaskPool[any](5)
 	for _, w := range p.available {
 		worker := w
-		tasks = append(tasks, &Task{
-			Fn: func(_ *reporter) error {
+		tp.Add(&Task[any]{
+			Fn: func(_ *reporter) (any, error) {
 				worker.Init(hash)
 				p.addPeerWorker(worker)
-				return worker.Err
+				return nil, worker.Err
 			},
 		})
 	}
 
 	// we use a task pool to start the peer workers concurrently
-	tp := NewTaskPool(5)
 	tp.Init()
-	errC := tp.Process(tasks)
-	go func() {
-		errs := <-errC
-		fmt.Printf("some errors during peer start: %v\n", multierr.Combine(errs...))
-	}()
-	<-time.After(15 * time.Second)
-	tp.Close()
+	defer tp.Close()
+	err := tp.Process()
+	if err != nil {
+		return false, err
+	}
+	ctx, _ := context.WithTimeout(context.Background(), 15*time.Second)
+	_, err = tp.AwaitComplete(ctx)
+	if err != nil {
+		return false, err
+	}
 
-	return len(p.ready) > 0, nil //errors.Join(errs...)
+	return len(p.ready) > 0, nil
 }
 
 func (p *Pool) process(t *types.Torrent, blockSize int, dst string) error {

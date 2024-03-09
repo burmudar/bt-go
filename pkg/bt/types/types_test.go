@@ -42,11 +42,10 @@ func TestBlocks(t *testing.T) {
 				t.Fatalf("failed to read torrent %q: %v", tName, err)
 			}
 
-			blockSize := 16 * 1024
 			lastPiece := len(torrent.PieceHashes) - 1
 
-			blocks := TorrentBlocksFor(torrent, lastPiece, blockSize)
-			plan := torrent.BlockPlan(lastPiece, blockSize)
+			blocks := TorrentBlocksFor(torrent, lastPiece, types.DefaultBlockSize)
+			plan := torrent.BlockPlan(lastPiece, types.DefaultBlockSize)
 
 			if len(blocks) != plan.NumBlocks {
 				t.Fatalf("incorrect total blocks - wanted %d got %d", len(blocks), plan.NumBlocks)
