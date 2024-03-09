@@ -11,8 +11,19 @@ type Pool struct {
 	puddle.Pool
 }
 
+func toSet(peers *types.PeerSpec) types.Set[string] {
+	s := types.NewSyncSet[string]()
+	for _, p := range peers.Peers {
+		key := p.String()
+		s.Put(key)
+	}
+
+	return s
+}
+
 func NewPool(peerID string, peers *types.PeerSpec) *Pool {
-	constructor :=
+	peerSet := types.NewSet[string]()
+
 	return &Pool{
 		peerID: peerID,
 		peers:  peers,
