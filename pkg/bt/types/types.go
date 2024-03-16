@@ -36,6 +36,8 @@ type Torrent struct {
 	RawInfo      map[string]interface{}
 }
 
+var _ comparable = &Peer{}
+
 type Peer struct {
 	IP   net.IP
 	Port int
