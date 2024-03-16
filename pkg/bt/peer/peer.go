@@ -28,6 +28,11 @@ type Client struct {
 	lastHandshake *Handshake
 }
 
+type Result[T any] struct {
+	R   T
+	Err error
+}
+
 func (c *Client) writeMessage(msg Message) error {
 	data := EncodeMessage(msg)
 	return c.send(data)
@@ -93,6 +98,28 @@ func (c *Client) send(data []byte) error {
 	return nil
 }
 
+func resultWithContext[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+	done := make(chan Result[T])
+	go func() {
+		r, err := fn()
+		done <- Result[T]{
+			R:   r,
+			Err: err,
+		}
+	}()
+	select {
+	case <-ctx.Done():
+		{
+			var empty T
+			return empty, ctx.Err()
+		}
+	case result := <-done:
+		{
+			return result.R, result.Err
+		}
+	}
+}
+
 func (c *Client) Handshake(ctx context.Context, hash [20]byte) (*Handshake, error) {
 	doHandshake := func() (*Handshake, error) {
 		if !c.IsConnected() {
@@ -126,16 +153,7 @@ func (c *Client) Handshake(ctx context.Context, hash [20]byte) (*Handshake, erro
 		return h, err
 	}
 
-	select {
-	case <-ctx.Done():
-		{
-			return nil, ctx.Err()
-		}
-	default:
-		{
-			return doHandshake()
-		}
-	}
+	return resultWithContext[*Handshake](ctx, doHandshake)
 }
 
 func (c *Client) waitForUnchoke() error {

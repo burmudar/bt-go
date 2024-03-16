@@ -34,6 +34,7 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 
 		client, err := NewHandshakedClient(ctx, peerID, peer, torrent)
 		if err != nil {
+			fmt.Printf("failed to  create handshaked client: %v", err)
 			peerQueue.Add(peer)
 			return nil, err
 		}
