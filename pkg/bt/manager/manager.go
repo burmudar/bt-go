@@ -73,6 +73,19 @@ func (tm *TorrentManager) Download(torrent *types.Torrent, dst string) error {
 	return nil
 }
 
+type PeerClientErr struct {
+	Err       error
+	BlockPlan *types.BlockPlan
+}
+
+func (p *PeerClientErr) Error() string {
+	return p.String()
+}
+
+func (p *PeerClientErr) String() string {
+	return fmt.Sprintf("peer client error: %v", p.Err)
+}
+
 type PieceDownloadFailedErr struct {
 	BlockPlan *types.BlockPlan
 }
@@ -136,11 +149,16 @@ loop:
 			}
 
 		case err := <-dp.errC:
-			if pErr, ok := err.(*PieceDownloadFailedErr); ok {
-				fmt.Printf("\nPiece %d failed - Retrying\n", pErr.BlockPlan.PieceLength)
-				dp.workC <- pErr.BlockPlan
+			switch e := err.(type) {
+			case *PieceDownloadFailedErr:
+				fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
+				dp.workC <- e.BlockPlan
+			case *PeerClientErr:
+				dp.workC <- e.BlockPlan
+			default:
+				allErrs = multierror.Append(allErrs, err)
+
 			}
-			allErrs = multierror.Append(allErrs, err)
 		}
 	}
 
@@ -176,7 +194,10 @@ func (dp *DownloaderPool) startWorker(id int) {
 		client, release, err := dp.clientPool.Get(innerCtx)
 		defer release()
 		if err != nil {
-			return fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err)
+			return &PeerClientErr{
+				Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
+				BlockPlan: piecePlan,
+			}
 		}
 
 		fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
