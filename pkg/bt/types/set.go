@@ -8,6 +8,7 @@ type Set[K comparable] interface {
 	All() []K
 	Len() int
 	Put(key K)
+	PutAll(all []K)
 	Has(key K) bool
 	Del(key K)
 }
@@ -31,6 +32,12 @@ func (s *SyncSet[K]) Put(v K) {
 	s.Lock()
 	defer s.Unlock()
 	s.BasicSet.Put(v)
+}
+
+func (s *SyncSet[K]) PutAll(v []K) {
+	s.Lock()
+	defer s.Unlock()
+	s.BasicSet.PutAll(v)
 }
 
 func (s *SyncSet[K]) Has(v K) bool {
@@ -73,6 +80,12 @@ func (s *BasicSet[K]) Len() int {
 
 func (s *BasicSet[K]) Put(v K) {
 	s.items[v] = _sentinel
+}
+
+func (s *BasicSet[K]) PutAll(all []K) {
+	for _, item := range all {
+		s.items[item] = _sentinel
+	}
 }
 
 func (s *BasicSet[K]) Has(v K) bool {
