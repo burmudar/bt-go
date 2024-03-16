@@ -154,11 +154,21 @@ func main() {
 				FatalExit("failed to get peers: %v", os.Args[2], err)
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			client, err := peer.NewHandshakedClient(ctx, PeerID, peers.Peers[0], t)
-			if err != nil {
-				cancel()
-				FatalExit("failed to create handshaked peer client: %v", err)
+			var client *peer.Client
+			var clientErr error
+			for _, p := range peers.Peers {
+				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+				client, clientErr = peer.NewHandshakedClient(ctx, PeerID, p, t)
+				if err != nil {
+					cancel()
+					continue
+				} else {
+					break
+				}
+			}
+
+			if clientErr != nil {
+				FatalExit("failed to create handshaked client: %v", clientErr)
 			}
 
 			if _, err := client.BitField(); err != nil {
