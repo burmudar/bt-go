@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
 	"github.com/jackc/puddle"
@@ -27,6 +28,9 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 		if !ok {
 			return nil, fmt.Errorf("not peers left to construct")
 		}
+
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 
 		client, err := NewHandshakedClient(ctx, peerID, peer, torrent)
 		if err != nil {
