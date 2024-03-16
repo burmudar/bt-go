@@ -159,7 +159,7 @@ func main() {
 			for _, p := range peers.Peers {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				client, clientErr = peer.NewHandshakedClient(ctx, PeerID, p, t)
-				if err != nil {
+				if clientErr != nil {
 					cancel()
 					continue
 				} else {
