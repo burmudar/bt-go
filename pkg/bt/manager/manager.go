@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -93,8 +94,9 @@ type DownloaderPool struct {
 	workC    chan *types.BlockPlan
 	complete chan *types.Piece
 
-	wg  *sync.WaitGroup
-	sem *semaphore.Weighted
+	count atomic.Int64
+	wg    *sync.WaitGroup
+	sem   *semaphore.Weighted
 
 	Result []*types.Piece
 }
@@ -126,7 +128,10 @@ loop:
 		select {
 		case p := <-dp.complete:
 			allPieces = append(allPieces, p)
-			break loop
+			if dp.count.Load() == int64(len(allPieces)) {
+				break loop
+			}
+
 		case err := <-dp.errC:
 			if pErr, ok := err.(*PieceDownloadFailedErr); ok {
 				dp.workC <- pErr.BlockPlan
@@ -138,19 +143,15 @@ loop:
 	close(dp.workC)
 	dp.wg.Wait()
 
-	dp.Close()
+	close(dp.errC)
+	close(dp.complete)
 
 	return allPieces, allErrs
 
 }
 
-func (dp *DownloaderPool) Close() {
-	close(dp.workC)
-	close(dp.errC)
-	close(dp.complete)
-}
-
 func (dp *DownloaderPool) Download(work *types.BlockPlan) {
+	dp.count.Add(1)
 	dp.workC <- work
 }
 
@@ -160,6 +161,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 		ctx := context.Background()
 		if err := dp.sem.Acquire(ctx, 1); err != nil {
 			dp.errC <- fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
+			dp.sem.Release(1)
 			continue
 		}
 
