@@ -23,6 +23,7 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 	peerQueue.AddAll(peers.Peers...)
 
 	var ctor puddle.Constructor = func(ctx context.Context) (any, error) {
+		println("peer constructor")
 		peer, ok := peerQueue.Pop()
 		if !ok {
 			return nil, fmt.Errorf("not peers left to construct")
@@ -32,7 +33,11 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 	}
 
 	var dtor puddle.Destructor = func(res interface{}) {
+		if res == nil {
+			return
+		}
 		if client, ok := res.(*Client); ok {
+			fmt.Println("destroying - ", client.PeerID)
 			client.Close()
 		}
 	}
@@ -45,14 +50,16 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 }
 
 func (p *peerPool) Get(ctx context.Context) (*Client, func(), error) {
+	noop := func() {}
 	res, err := p.pool.Acquire(ctx)
 	if err != nil {
-		return nil, nil, err
+		return nil, noop, err
 	}
 
 	client, ok := res.Value().(*Client)
 	if !ok {
-		return nil, nil, fmt.Errorf("expected *peer.Client but got %T", res.Value())
+		res.Destroy()
+		return nil, noop, fmt.Errorf("expected *peer.Client but got %T", res.Value())
 	}
 
 	return client, res.Release, nil

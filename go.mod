@@ -10,7 +10,10 @@ module github.com/codecrafters-io/bittorrent-starter-go
 
 go 1.19
 
-require github.com/jackc/puddle v1.3.0
+require (
+	github.com/jackc/puddle v1.3.0
+	golang.org/x/sync v0.6.0
+)
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

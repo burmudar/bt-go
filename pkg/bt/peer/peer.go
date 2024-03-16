@@ -159,18 +159,31 @@ func (c *Client) waitForUnchoke() error {
 	}
 }
 
-func assembleData(blocks []*PieceBlock) []byte {
+func assembleData(blocks []*PieceBlock) ([]byte, error) {
+	var sortErr error
 	sort.Slice(blocks, func(i, j int) bool {
+		if blocks[i] == nil {
+			sortErr = fmt.Errorf("blocks at i: %d were nil", i)
+			return false
+		}
+		if blocks[j] == nil {
+			sortErr = fmt.Errorf("blocks at j: %d were nil", j)
+			return false
+		}
 		return blocks[i].Begin < blocks[j].Begin
 	})
 
-	// The last block may be smaller than the regular chunk size
-	result := make([]byte, 0)
-	for _, block := range blocks {
-		result = append(result, block.Data...)
+	if sortErr != nil {
+		return nil, sortErr
 	}
 
-	return result
+	// The last block may be smaller than the regular chunk size
+	data := make([]byte, 0)
+	for _, block := range blocks {
+		data = append(data, block.Data...)
+	}
+
+	return data, nil
 }
 
 func (c *Client) BitField() (Message, error) {
@@ -267,7 +280,10 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 
 	c.announcef("fetched %d blocks for piece %d\n", plan.NumBlocks, plan.PieceIndex)
 
-	data := assembleData(downloaded)
+	data, err := assembleData(downloaded)
+	if err != nil {
+		return nil, err
+	}
 	piece := &types.Piece{
 		Index: plan.PieceIndex,
 		Peer:  *c.Peer,

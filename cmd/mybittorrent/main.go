@@ -161,7 +161,7 @@ func main() {
 			}
 
 			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.PieceHashes[pieceIdx], t.PieceLength)
-			plan := t.BlockPlan(pieceIdx, 16*1024)
+			plan := t.BlockPlan(pieceIdx, manager.MaxBlockSize)
 			if b, err := client.DownloadPiece(plan); err != nil {
 				FatalExit("piece download failure: %v", err)
 			} else {
@@ -184,7 +184,7 @@ func main() {
 			}
 			dst := os.Args[3]
 
-			m := manager.NewTorrentManager(PeerID)
+			m := manager.NewTorrentManager(PeerID, t)
 			if err := m.Download(t, dst); err != nil {
 				FatalExit("download failure: %v", err)
 			}
@@ -192,14 +192,14 @@ func main() {
 	case "download":
 		{
 			fmt.Printf("%+v", os.Args)
-			torrentFile := os.Args[4]
+			torrentFile := os.Args[2]
 			t, err := encoding.DecodeTorrent(torrentFile)
 			if err != nil {
 				FatalExit("failed to read torrent %q: %v", os.Args[3], err)
 			}
 			dst := os.Args[3]
 
-			m := manager.NewTorrentManager(PeerID)
+			m := manager.NewTorrentManager(PeerID, t)
 			if err := m.Download(t, dst); err != nil {
 				FatalExit("download failure: %v", err)
 			}

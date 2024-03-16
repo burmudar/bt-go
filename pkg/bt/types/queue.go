@@ -47,11 +47,15 @@ func (s *syncSliceQueue[K]) Pop() (K, bool) {
 
 // Size implements Queue.
 func (s *syncSliceQueue[K]) Size() int {
+	s.Lock()
+	defer s.Unlock()
 	return s.queue.Size()
 }
 
 // IsEmpty implements Queue.
 func (s *syncSliceQueue[K]) IsEmpty() bool {
+	s.Lock()
+	defer s.Unlock()
 	return s.queue.IsEmpty()
 }
 
@@ -87,16 +91,12 @@ func (s *sliceQueue[K]) Head() (K, bool) {
 
 // Pop implements Queue.
 func (s *sliceQueue[K]) Pop() (K, bool) {
-	size := s.Size()
 	if s.IsEmpty() {
 		var empty K
 		return empty, false
 	}
 	value := s.items[0]
-
-	if size > 1 {
-		s.items = s.items[1:]
-	}
+	s.items = s.items[1:]
 
 	return value, true
 }
