@@ -220,7 +220,7 @@ func (t *TrackerClient) GetPeers(peerID string, port int, torrent *types.Torrent
 		return nil, err
 	}
 	// Need to ensure we have unique peers
-	set := types.BasicSet[*types.Peer]{}
+	set := types.NewSet[*types.Peer]()
 	set.PutAll(resp.Peers)
 
 	return &types.PeerSpec{
