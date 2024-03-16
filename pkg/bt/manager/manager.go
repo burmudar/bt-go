@@ -128,12 +128,16 @@ loop:
 		select {
 		case p := <-dp.complete:
 			allPieces = append(allPieces, p)
-			if dp.count.Load() == int64(len(allPieces)) {
+			total := dp.count.Load()
+			if total == int64(len(allPieces)) {
 				break loop
+			} else {
+				fmt.Println("\n\nLeft:", total-int64(len(allPieces)))
 			}
 
 		case err := <-dp.errC:
 			if pErr, ok := err.(*PieceDownloadFailedErr); ok {
+				fmt.Printf("\nPiece %d failed - Retrying\n", pErr.BlockPlan.PieceLength)
 				dp.workC <- pErr.BlockPlan
 			}
 			allErrs = multierror.Append(allErrs, err)
@@ -180,13 +184,16 @@ func (dp *DownloaderPool) startWorker(id int) {
 		if err != nil {
 			return &PieceDownloadFailedErr{BlockPlan: piecePlan}
 		}
+		fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
 
 		dp.complete <- piece
 		return nil
 	}
 
 	for piecePlan := range dp.workC {
-		dp.errC <- work(piecePlan)
+		if err := work(piecePlan); err != nil {
+			dp.errC <- err
+		}
 	}
 }
 
