@@ -29,7 +29,12 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 			return nil, fmt.Errorf("not peers left to construct")
 		}
 
-		return NewHandshakedClient(peerID, peer, torrent)
+		client, err := NewHandshakedClient(peerID, peer, torrent)
+		if err != nil {
+			peerQueue.Add(peer)
+			return nil, err
+		}
+		return client, err
 	}
 
 	var dtor puddle.Destructor = func(res interface{}) {
@@ -39,6 +44,7 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 		if client, ok := res.(*Client); ok {
 			fmt.Println("destroying - ", client.PeerID)
 			client.Close()
+			peerQueue.Add(client.Peer)
 		}
 	}
 

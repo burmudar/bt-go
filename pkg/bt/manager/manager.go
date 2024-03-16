@@ -6,7 +6,6 @@ import (
 	"os"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -73,91 +72,145 @@ func (tm *TorrentManager) Download(torrent *types.Torrent, dst string) error {
 	return nil
 }
 
-func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
-	plans := torrent.AllBlockPlans(MaxBlockSize)
-	queue := types.NewSyncQueue[*types.BlockPlan]()
-	queue.AddAll(plans...)
+type PieceDownloadFailedErr struct {
+	BlockPlan *types.BlockPlan
+}
 
-	allPieces := []*types.Piece{}
+func (p *PieceDownloadFailedErr) Error() string {
+	return p.String()
+}
 
-	var downloaded = make(chan *types.Piece, len(plans))
-	var done = make(chan struct{})
-	var errC = make(chan error)
+func (p *PieceDownloadFailedErr) String() string {
+	return fmt.Sprintf("piece %d failed to download", p.BlockPlan.PieceIndex)
+}
+
+type DownloaderPool struct {
+	Size int
+
+	clientPool peer.Pool
+
+	errC     chan error
+	workC    chan *types.BlockPlan
+	complete chan *types.Piece
+
+	wg  *sync.WaitGroup
+	sem *semaphore.Weighted
+
+	Result []*types.Piece
+}
+
+func NewDownloaderPool(s int, clientPool peer.Pool) *DownloaderPool {
+	return &DownloaderPool{
+		Size:       s,
+		clientPool: clientPool,
+		errC:       make(chan error),
+		workC:      make(chan *types.BlockPlan),
+		complete:   make(chan *types.Piece),
+		wg:         &sync.WaitGroup{},
+		sem:        semaphore.NewWeighted(int64(s)),
+	}
+}
+
+func (dp *DownloaderPool) Start() {
+	for i := 0; i < dp.Size; i++ {
+		dp.wg.Add(1)
+		go dp.startWorker(i)
+	}
+}
+
+func (dp *DownloaderPool) Wait() ([]*types.Piece, error) {
+	var allPieces = []*types.Piece{}
 	var allErrs error
-
-	grp := sync.WaitGroup{}
-	go func() {
-	loop:
-		for {
-			select {
-			case p := <-downloaded:
-				allPieces = append(allPieces, p)
-			case err := <-errC:
-				allErrs = multierror.Append(allErrs, err)
-			case <-done:
-				break loop
+loop:
+	for {
+		select {
+		case p := <-dp.complete:
+			allPieces = append(allPieces, p)
+			break loop
+		case err := <-dp.errC:
+			if pErr, ok := err.(*PieceDownloadFailedErr); ok {
+				dp.workC <- pErr.BlockPlan
 			}
+			allErrs = multierror.Append(allErrs, err)
 		}
-	}()
-
-	sem := semaphore.NewWeighted(5)
-	var count atomic.Int32
-	count.Swap(int32(len(plans)))
-	fmt.Println("piece queue is: ", queue.Size())
-	for !queue.IsEmpty() {
-		piecePlan, ok := queue.Pop()
-		if !ok {
-			fmt.Println("failed to retrieve piece from queue")
-			break
-		}
-
-		grp.Add(1)
-		go func(piecePlan *types.BlockPlan) {
-			defer grp.Done()
-
-			ctx := context.Background()
-			if err := sem.Acquire(ctx, 1); err != nil {
-				errC <- fmt.Errorf("[piece %d] failed to acquire semaphore for download: %w", piecePlan.PieceIndex, err)
-				return
-			}
-			defer sem.Release(1)
-
-			innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
-			defer cancel()
-			client, release, err := p.Get(innerCtx)
-			defer release()
-			if err != nil {
-				errC <- fmt.Errorf("[piece %d] failed to retrieve client from pool: %w", piecePlan.PieceIndex, err)
-				return
-			}
-
-			fmt.Printf("downloading piece %d\n", piecePlan.PieceIndex)
-			piece, err := client.DownloadPiece(piecePlan)
-			if err != nil {
-				fmt.Printf("\n\nfailed to download piece: %v\n\n\n", err)
-				queue.Add(piecePlan)
-				return
-			}
-			count.Add(-1)
-
-			fmt.Printf("\n\n### %d Left\n", count.Load())
-
-			downloaded <- piece
-			fmt.Println("<--- go routine end --->")
-		}(piecePlan)
-
 	}
 
-	grp.Wait()
-	close(done)
-	fmt.Printf("%d pieces downloaded\n", len(allPieces))
+	close(dp.workC)
+	dp.wg.Wait()
 
-	sort.SliceStable(allPieces, func(a, b int) bool {
-		p1 := allPieces[a]
-		p2 := allPieces[b]
+	dp.Close()
+
+	return allPieces, allErrs
+
+}
+
+func (dp *DownloaderPool) Close() {
+	close(dp.workC)
+	close(dp.errC)
+	close(dp.complete)
+}
+
+func (dp *DownloaderPool) Download(work *types.BlockPlan) {
+	dp.workC <- work
+}
+
+func (dp *DownloaderPool) startWorker(id int) {
+	defer dp.wg.Done()
+	for piecePlan := range dp.workC {
+		ctx := context.Background()
+		if err := dp.sem.Acquire(ctx, 1); err != nil {
+			dp.errC <- fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
+			continue
+		}
+
+		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		client, release, err := dp.clientPool.Get(innerCtx)
+		if err != nil {
+			dp.errC <- fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err)
+			dp.sem.Release(1)
+			cancel()
+			release()
+			continue
+		}
+
+		fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
+		piece, err := client.DownloadPiece(piecePlan)
+		if err != nil {
+			dp.errC <- &PieceDownloadFailedErr{BlockPlan: piecePlan}
+			dp.sem.Release(1)
+			cancel()
+			release()
+			continue
+		}
+
+		dp.complete <- piece
+		dp.sem.Release(1)
+		cancel()
+		release()
+	}
+}
+
+func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
+	plans := torrent.AllBlockPlans(MaxBlockSize)
+
+	var dp = NewDownloaderPool(5, p)
+
+	dp.Start()
+
+	for _, plan := range plans {
+		dp.Download(plan)
+	}
+
+	pieces, err := dp.Wait()
+
+	fmt.Printf("%d pieces downloaded\n", len(pieces))
+
+	sort.SliceStable(pieces, func(a, b int) bool {
+		p1 := pieces[a]
+		p2 := pieces[b]
 
 		return p1.Index <= p2.Index
 	})
 
-	return allPieces, allErrs
+	return pieces, err
 }
