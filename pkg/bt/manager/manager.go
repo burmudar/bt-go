@@ -157,38 +157,36 @@ func (dp *DownloaderPool) Download(work *types.BlockPlan) {
 
 func (dp *DownloaderPool) startWorker(id int) {
 	defer dp.wg.Done()
-	for piecePlan := range dp.workC {
+	work := func(piecePlan *types.BlockPlan) error {
+		fmt.Printf("[downloader %d] %d piece\n", id, piecePlan.PieceIndex)
 		ctx := context.Background()
 		if err := dp.sem.Acquire(ctx, 1); err != nil {
-			dp.errC <- fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
 			dp.sem.Release(1)
-			continue
+			return fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
 		}
+		defer dp.sem.Release(1)
 
 		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		defer cancel()
+
 		client, release, err := dp.clientPool.Get(innerCtx)
+		defer release()
 		if err != nil {
-			dp.errC <- fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err)
-			dp.sem.Release(1)
-			cancel()
-			release()
-			continue
+			return fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err)
 		}
 
 		fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
 		piece, err := client.DownloadPiece(piecePlan)
 		if err != nil {
-			dp.errC <- &PieceDownloadFailedErr{BlockPlan: piecePlan}
-			dp.sem.Release(1)
-			cancel()
-			release()
-			continue
+			return &PieceDownloadFailedErr{BlockPlan: piecePlan}
 		}
 
 		dp.complete <- piece
-		dp.sem.Release(1)
-		cancel()
-		release()
+		return nil
+	}
+
+	for piecePlan := range dp.workC {
+		dp.errC <- work(piecePlan)
 	}
 }
 
