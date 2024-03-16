@@ -117,14 +117,17 @@ func main() {
 
 			client := peer.NewClient(PeerID)
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			bctx := context.Background()
+			ctx, cancel := context.WithTimeout(bctx, 10*time.Second)
 			defer cancel()
 			if err = client.Connect(ctx, p); err != nil {
 				FatalExit("failed to connect to client: %v", err)
 			}
 			defer client.Close()
 
-			handshake, err := client.Handshake(t.Hash)
+			ctx, cancel = context.WithTimeout(bctx, 10*time.Second)
+			defer cancel()
+			handshake, err := client.Handshake(bctx, t.Hash)
 			if err != nil {
 				FatalExit("%q handshake failed: %v", p.String(), err)
 			}
@@ -151,8 +154,10 @@ func main() {
 				FatalExit("failed to get peers: %v", os.Args[2], err)
 			}
 
-			client, err := peer.NewHandshakedClient(PeerID, peers.Peers[0], t)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			client, err := peer.NewHandshakedClient(ctx, PeerID, peers.Peers[0], t)
 			if err != nil {
+				cancel()
 				FatalExit("failed to create handshaked peer client: %v", err)
 			}
 

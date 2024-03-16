@@ -40,16 +40,14 @@ func NewClient(peerID string) *Client {
 	}
 }
 
-func NewHandshakedClient(id string, peer *types.Peer, torrent *types.Torrent) (*Client, error) {
+func NewHandshakedClient(ctx context.Context, id string, peer *types.Peer, torrent *types.Torrent) (*Client, error) {
 	client := NewClient(id)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 
 	if err := client.Connect(ctx, peer); err != nil {
 		return nil, fmt.Errorf("failed to connect to client: %v", err)
 	}
 
-	if _, err := client.Handshake(torrent.Hash); err != nil {
+	if _, err := client.Handshake(ctx, torrent.Hash); err != nil {
 		return nil, fmt.Errorf("failed to perform handshake to client: %v", err)
 	}
 	return client, nil
@@ -91,36 +89,49 @@ func (c *Client) send(data []byte) error {
 	return nil
 }
 
-func (c *Client) Handshake(hash [20]byte) (*Handshake, error) {
-	if !c.IsConnected() {
-		return nil, fmt.Errorf("not connected")
+func (c *Client) Handshake(ctx context.Context, hash [20]byte) (*Handshake, error) {
+	doHandshake := func() (*Handshake, error) {
+		if !c.IsConnected() {
+			return nil, fmt.Errorf("not connected")
+		}
+
+		c.announcef("starting handshake ...\n")
+
+		data, err := encodeHandshake(&Handshake{
+			PeerID: c.PeerID,
+			Hash:   hash,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("encoding failure: %w", err)
+		}
+		if err := c.send(data); err != nil {
+			return nil, err
+		}
+
+		resp := [68]byte{}
+		if _, err := read(c.bufrw, resp[:]); err != nil {
+			return nil, err
+		}
+
+		h, err := decodeHandshake(resp[:])
+		if err == nil {
+			c.lastHandshake = h
+		}
+		c.announcef("handshake complete...\n")
+
+		return h, err
 	}
 
-	c.announcef("starting handshake ...\n")
-
-	data, err := encodeHandshake(&Handshake{
-		PeerID: c.PeerID,
-		Hash:   hash,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("encoding failure: %w", err)
+	select {
+	case <-ctx.Done():
+		{
+			return nil, ctx.Err()
+		}
+	default:
+		{
+			return doHandshake()
+		}
 	}
-	if err := c.send(data); err != nil {
-		return nil, err
-	}
-
-	resp := [68]byte{}
-	if _, err := read(c.bufrw, resp[:]); err != nil {
-		return nil, err
-	}
-
-	h, err := decodeHandshake(resp[:])
-	if err == nil {
-		c.lastHandshake = h
-	}
-	c.announcef("handshake complete...\n")
-
-	return h, err
 }
 
 func (c *Client) waitForUnchoke() error {
@@ -228,6 +239,7 @@ func (c *Client) Have(index int) error {
 }
 
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
+	defer c.announcef("<<<< End DownloadPiece [%d] >>>>", plan.PieceIndex)
 	if c.Peer == nil {
 		panic("cannot download piece with nil peer")
 	}
