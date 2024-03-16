@@ -48,6 +48,7 @@ func NewHandshakedClient(ctx context.Context, id string, peer *types.Peer, torre
 	}
 
 	if _, err := client.Handshake(ctx, torrent.Hash); err != nil {
+		client.Close()
 		return nil, fmt.Errorf("failed to perform handshake to client: %v", err)
 	}
 	return client, nil
@@ -58,7 +59,10 @@ func (c *Client) Handshaked() bool {
 }
 
 func (c *Client) Close() error {
-	return c.conn.Close()
+	if c.conn != nil {
+		return c.conn.Close()
+	}
+	return nil
 }
 
 func (c *Client) Connect(ctx context.Context, p *types.Peer) error {
