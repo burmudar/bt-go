@@ -23,7 +23,6 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 	peerQueue.AddAll(peers.Peers...)
 
 	var ctor puddle.Constructor = func(ctx context.Context) (any, error) {
-		println("peer constructor")
 		peer, ok := peerQueue.Pop()
 		if !ok {
 			return nil, fmt.Errorf("not peers left to construct")
