@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
+
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/peer"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/tracker"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
@@ -81,7 +83,7 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 	var downloaded = make(chan *types.Piece, len(plans))
 	var done = make(chan struct{})
 	var errC = make(chan error)
-	var allErrs = []error{}
+	var allErrs error
 
 	grp := sync.WaitGroup{}
 	go func() {
@@ -91,7 +93,7 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 			case p := <-downloaded:
 				allPieces = append(allPieces, p)
 			case err := <-errC:
-				allErrs = append(allErrs, err)
+				allErrs = multierror.Append(allErrs, err)
 			case <-done:
 				break loop
 			}
@@ -115,7 +117,8 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 
 			ctx := context.Background()
 			if err := sem.Acquire(ctx, 1); err != nil {
-				errC <- fmt.Errorf("failed to acquire semaphore for download")
+				errC <- fmt.Errorf("[piece %d] failed to acquire semaphore for download: %w", piecePlan.PieceIndex, err)
+				return
 			}
 			defer sem.Release(1)
 
@@ -124,7 +127,7 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 			client, release, err := p.Get(innerCtx)
 			defer release()
 			if err != nil {
-				errC <- fmt.Errorf("failed to retrieve client from pool: %w", err)
+				errC <- fmt.Errorf("[piece %d] failed to retrieve client from pool: %w", piecePlan.PieceIndex, err)
 				return
 			}
 
@@ -156,7 +159,5 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 		return p1.Index <= p2.Index
 	})
 
-	fmt.Printf("%d errors encountered\n", len(allErrs))
-
-	return allPieces, nil
+	return allPieces, allErrs
 }
