@@ -201,6 +201,7 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 	client, release, err := dp.clientPool.Get(innerCtx)
 	defer func() {
 		client.NotInterested()
+		client.Close()
 		release()
 	}()
 	if err != nil {
