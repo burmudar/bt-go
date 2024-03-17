@@ -3,6 +3,7 @@ package peer
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -159,6 +160,13 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 	buf.Write([]byte(h.PeerID))
 
 	return buf.Bytes(), nil
+}
+
+func DecodeMessageWithCtx(ctx context.Context, r *bufio.ReadWriter) (Message, error) {
+	do := func() (Message, error) {
+		return DecodeMessage(r)
+	}
+	return resultWithContext[Message](ctx, do)
 }
 
 func DecodeMessage(r *bufio.ReadWriter) (Message, error) {

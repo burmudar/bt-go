@@ -87,6 +87,7 @@ func (p *PeerClientErr) String() string {
 }
 
 type PieceDownloadFailedErr struct {
+	Err       error
 	BlockPlan *types.BlockPlan
 }
 
@@ -95,7 +96,7 @@ func (p *PieceDownloadFailedErr) Error() string {
 }
 
 func (p *PieceDownloadFailedErr) String() string {
-	return fmt.Sprintf("piece %d failed to download", p.BlockPlan.PieceIndex)
+	return fmt.Sprintf("piece %d failed to download: %v", p.BlockPlan.PieceIndex, p.Err)
 }
 
 type DownloaderPool struct {
@@ -199,11 +200,7 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 
 	fmt.Printf("[downloader %d] acuiring client\n", id)
 	client, release, err := dp.clientPool.Get(innerCtx)
-	defer func() {
-		client.NotInterested()
-		client.Close()
-		release()
-	}()
+	defer release()
 	if err != nil {
 		return &PeerClientErr{
 			Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
@@ -214,7 +211,7 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 	fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
 	piece, err := client.DownloadPiece(piecePlan)
 	if err != nil {
-		return &PieceDownloadFailedErr{BlockPlan: piecePlan}
+		return &PieceDownloadFailedErr{BlockPlan: piecePlan, Err: err}
 	}
 	fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
 
