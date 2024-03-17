@@ -183,6 +183,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 	work := func(piecePlan *types.BlockPlan) error {
 		fmt.Printf("[downloader %d] %d piece\n", id, piecePlan.PieceIndex)
 		ctx := context.Background()
+		fmt.Printf("[downloader %d] acuiring semaphore\n", id)
 		if err := dp.sem.Acquire(ctx, 1); err != nil {
 			dp.sem.Release(1)
 			return fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
@@ -192,6 +193,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
+		fmt.Printf("[downloader %d] acuiring client\n", id)
 		client, release, err := dp.clientPool.Get(innerCtx)
 		defer release()
 		if err != nil {
