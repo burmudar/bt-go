@@ -26,6 +26,8 @@ type Client struct {
 	conn          net.Conn
 	bufrw         *bufio.ReadWriter
 	lastHandshake *Handshake
+
+	choked bool
 }
 
 type Result[T any] struct {
@@ -157,26 +159,26 @@ func (c *Client) Handshake(ctx context.Context, hash [20]byte) (*Handshake, erro
 }
 
 func (c *Client) waitForUnchoke() error {
-	ticker := time.NewTicker(1 * time.Second)
-	done := time.NewTimer(30 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
+	done := time.NewTimer(60 * time.Second)
 
 	interested := &Interested{}
 	for {
 		select {
 		case <-ticker.C:
 			{
-				c.announcef("sending \"interested\"\n")
+				c.announcef("<unchoke loop> sending \"interested\"\n")
 				data := EncodeMessage(interested)
 				if err := c.send(data); err != nil {
 					return err
 				}
-				c.announcef("reading msg")
 				if msg, err := DecodeMessage(c.bufrw); err != nil {
 					return err
 				} else if msg.Tag() != UnchokeType {
-					c.announcef("waiting for unchoke - got %T\n", msg)
+					c.announcef("<unchoke loop> waiting for unchoke - got %T\n", msg)
 				} else {
-					c.announcef("received unchoke - %T\n", msg)
+					c.choked = false
+					c.announcef("<unchoke loop> received unchoke - %T\n", msg)
 					ticker.Stop()
 					done.Stop()
 					return nil
@@ -280,8 +282,10 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	// 3. unchoke
 	// 4. request
 	// 5. piece
-	if err := c.waitForUnchoke(); err != nil {
-		return nil, err
+	if c.choked {
+		if err := c.waitForUnchoke(); err != nil {
+			return nil, err
+		}
 	}
 
 	downloaded := make([]*PieceBlock, plan.NumBlocks)
@@ -307,6 +311,7 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 			c.announcef("received keep alive\n")
 		case *Choke:
 			c.announcef("received choke\n")
+			c.choked = true
 			if err := c.waitForUnchoke(); err != nil {
 				return nil, err
 			}
