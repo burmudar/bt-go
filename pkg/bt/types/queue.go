@@ -8,6 +8,7 @@ type Queue[K any] interface {
 	Head() (K, bool)
 	Tail() (K, bool)
 	Add(v K)
+	AddFirst(v K)
 	AddAll(v ...K)
 	Pop() (K, bool)
 }
@@ -22,6 +23,13 @@ func (s *syncSliceQueue[K]) Add(v K) {
 	s.Lock()
 	defer s.Unlock()
 	s.queue.Add(v)
+}
+
+// Add implements Queue.
+func (s *syncSliceQueue[K]) AddFirst(v K) {
+	s.Lock()
+	defer s.Unlock()
+	s.queue.AddFirst(v)
 }
 
 // AddAll implements Queue.
@@ -73,6 +81,12 @@ type sliceQueue[K any] struct {
 // Add implements Queue.
 func (s *sliceQueue[K]) Add(v K) {
 	s.items = append(s.items, v)
+}
+
+// AddFirst implements Queue.
+func (s *sliceQueue[K]) AddFirst(v K) {
+	items := []K{v}
+	s.items = append(items, s.items...)
 }
 
 // AddAll implements Queue.
