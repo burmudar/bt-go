@@ -163,6 +163,7 @@ func main() {
 					cancel()
 					continue
 				} else {
+					cancel()
 					break
 				}
 			}

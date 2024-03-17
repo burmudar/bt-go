@@ -154,6 +154,7 @@ loop:
 				fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
 				dp.workC <- e.BlockPlan
 			case *PeerClientErr:
+				fmt.Printf("\nPeer Client err - Retrying piece %d\n", e.BlockPlan.PieceLength)
 				dp.workC <- e.BlockPlan
 			default:
 				allErrs = multierror.Append(allErrs, err)
@@ -188,7 +189,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 		}
 		defer dp.sem.Release(1)
 
-		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		defer cancel()
 
 		client, release, err := dp.clientPool.Get(innerCtx)
