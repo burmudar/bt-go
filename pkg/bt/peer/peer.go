@@ -261,7 +261,7 @@ func (c *Client) Have(index int) error {
 }
 
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
-	defer c.announcef("<<<< End DownloadPiece [%d] >>>>", plan.PieceIndex)
+	defer c.announcef("<<<< End DownloadPiece [%d] >>>>\n", plan.PieceIndex)
 	if c.Peer == nil {
 		panic("cannot download piece with nil peer")
 	}

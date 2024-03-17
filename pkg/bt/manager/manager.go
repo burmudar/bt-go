@@ -217,7 +217,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 	defer dp.wg.Done()
 	for piecePlan := range dp.workC {
 		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
-			fmt.Printf("[downloader %d] err: %v\n", id, err)
+			fmt.Printf("\n[downloader %d] err: %v\n", id, err)
 			dp.errC <- err
 		}
 	}
@@ -226,7 +226,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 	plans := torrent.AllBlockPlans(MaxBlockSize)
 
-	var dp = NewDownloaderPool(5, p)
+	var dp = NewDownloaderPool(3, p)
 
 	dp.Start()
 
