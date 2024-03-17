@@ -152,10 +152,12 @@ loop:
 			switch e := err.(type) {
 			case *PieceDownloadFailedErr:
 				fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
-				dp.workC <- e.BlockPlan
+				dp.count.Add(-1)
+				dp.Download(e.BlockPlan)
 			case *PeerClientErr:
 				fmt.Printf("\nPeer Client err - Retrying piece %d\n", e.BlockPlan.PieceLength)
-				dp.workC <- e.BlockPlan
+				dp.count.Add(-1)
+				dp.Download(e.BlockPlan)
 			default:
 				allErrs = multierror.Append(allErrs, err)
 
@@ -179,6 +181,7 @@ func (dp *DownloaderPool) Download(work *types.BlockPlan) {
 }
 
 func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) error {
+	defer fmt.Printf("[downloader %d] work complete\n", id)
 	fmt.Printf("[downloader %d] %d piece\n", id, piecePlan.PieceIndex)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	fmt.Printf("[downloader %d] acuiring semaphore\n", id)
@@ -221,6 +224,8 @@ func (dp *DownloaderPool) startWorker(id int) {
 			dp.errC <- err
 		}
 	}
+
+	fmt.Printf("####### Worker %d exiting ########", id)
 }
 
 func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
