@@ -178,45 +178,45 @@ func (dp *DownloaderPool) Download(work *types.BlockPlan) {
 	dp.workC <- work
 }
 
-func (dp *DownloaderPool) startWorker(id int) {
-	defer dp.wg.Done()
-	work := func(piecePlan *types.BlockPlan) error {
-		fmt.Printf("[downloader %d] %d piece\n", id, piecePlan.PieceIndex)
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		fmt.Printf("[downloader %d] acuiring semaphore\n", id)
-		if err := dp.sem.Acquire(ctx, 1); err != nil {
-			cancel()
-			return fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
+func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) error {
+	fmt.Printf("[downloader %d] %d piece\n", id, piecePlan.PieceIndex)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	fmt.Printf("[downloader %d] acuiring semaphore\n", id)
+	if err := dp.sem.Acquire(ctx, 1); err != nil {
+		cancel()
+		return fmt.Errorf("[downloader %d] failed to acquire semaphore for download: %w", id, err)
+	}
+	defer dp.sem.Release(1)
+	defer cancel()
+
+	innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	fmt.Printf("[downloader %d] acuiring client\n", id)
+	client, release, err := dp.clientPool.Get(innerCtx)
+	defer release()
+	if err != nil {
+		return &PeerClientErr{
+			Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
+			BlockPlan: piecePlan,
 		}
-		defer dp.sem.Release(1)
-		defer cancel()
-
-		innerCtx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		defer cancel()
-
-		fmt.Printf("[downloader %d] acuiring client\n", id)
-		client, release, err := dp.clientPool.Get(innerCtx)
-		defer release()
-		if err != nil {
-			return &PeerClientErr{
-				Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
-				BlockPlan: piecePlan,
-			}
-		}
-
-		fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
-		piece, err := client.DownloadPiece(piecePlan)
-		if err != nil {
-			return &PieceDownloadFailedErr{BlockPlan: piecePlan}
-		}
-		fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
-
-		dp.complete <- piece
-		return nil
 	}
 
+	fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
+	piece, err := client.DownloadPiece(piecePlan)
+	if err != nil {
+		return &PieceDownloadFailedErr{BlockPlan: piecePlan}
+	}
+	fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
+
+	dp.complete <- piece
+	return nil
+}
+
+func (dp *DownloaderPool) startWorker(id int) {
+	defer dp.wg.Done()
 	for piecePlan := range dp.workC {
-		if err := work(piecePlan); err != nil {
+		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
 			dp.errC <- err
 		}
 	}
