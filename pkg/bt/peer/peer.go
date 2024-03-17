@@ -260,6 +260,16 @@ func (c *Client) Have(index int) error {
 	return nil
 }
 
+func (c *Client) NotInterested() error {
+	if !c.IsConnected() {
+		return fmt.Errorf("not connected")
+	}
+
+	c.announcef("sending not interested")
+
+	return c.writeMessage(&NotInterested{})
+}
+
 func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	defer c.announcef("<<<< End DownloadPiece [%d] >>>>\n", plan.PieceIndex)
 	if c.Peer == nil {

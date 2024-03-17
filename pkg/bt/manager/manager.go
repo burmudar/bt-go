@@ -199,7 +199,10 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 
 	fmt.Printf("[downloader %d] acuiring client\n", id)
 	client, release, err := dp.clientPool.Get(innerCtx)
-	defer release()
+	defer func() {
+		client.NotInterested()
+		release()
+	}()
 	if err != nil {
 		return &PeerClientErr{
 			Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
