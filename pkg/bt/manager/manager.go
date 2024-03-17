@@ -217,6 +217,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 	defer dp.wg.Done()
 	for piecePlan := range dp.workC {
 		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
+			fmt.Printf("[downloader %d] err: %v\n", id, err)
 			dp.errC <- err
 		}
 	}
