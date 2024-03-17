@@ -136,36 +136,38 @@ func (dp *DownloaderPool) Start() {
 func (dp *DownloaderPool) Wait() ([]*types.Piece, error) {
 	var allPieces = []*types.Piece{}
 	var allErrs error
-loop:
-	for {
-		select {
-		case p := <-dp.complete:
-			allPieces = append(allPieces, p)
-			total := dp.count.Load()
-			if total == int64(len(allPieces)) {
-				break loop
-			} else {
-				fmt.Println("\n\nLeft:", total-int64(len(allPieces)))
-			}
+	go func() {
+	loop:
+		for {
+			select {
+			case p := <-dp.complete:
+				allPieces = append(allPieces, p)
+				total := dp.count.Load()
+				if total == int64(len(allPieces)) {
+					break loop
+				} else {
+					fmt.Println("\n\nLeft:", total-int64(len(allPieces)))
+				}
 
-		case err := <-dp.errC:
-			switch e := err.(type) {
-			case *PieceDownloadFailedErr:
-				fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
-				dp.count.Add(-1)
-				dp.Download(e.BlockPlan)
-			case *PeerClientErr:
-				fmt.Printf("\nPeer Client err - Retrying piece %d\n", e.BlockPlan.PieceLength)
-				dp.count.Add(-1)
-				dp.Download(e.BlockPlan)
-			default:
-				allErrs = multierror.Append(allErrs, err)
+			case err := <-dp.errC:
+				switch e := err.(type) {
+				case *PieceDownloadFailedErr:
+					fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
+					dp.count.Add(-1)
+					dp.Download(e.BlockPlan)
+				case *PeerClientErr:
+					fmt.Printf("\nPeer Client err - Retrying piece %d\n", e.BlockPlan.PieceLength)
+					dp.count.Add(-1)
+					dp.Download(e.BlockPlan)
+				default:
+					allErrs = multierror.Append(allErrs, err)
 
+				}
 			}
 		}
-	}
+		close(dp.workC)
+	}()
 
-	close(dp.workC)
 	dp.wg.Wait()
 
 	close(dp.errC)
