@@ -120,7 +120,7 @@ func NewDownloaderPool(s int, clientPool peer.Pool) *DownloaderPool {
 		clientPool: clientPool,
 		errC:       make(chan error),
 		workC:      make(chan *types.BlockPlan),
-		complete:   make(chan *types.Piece),
+		complete:   make(chan *types.Piece, s),
 		wg:         &sync.WaitGroup{},
 		sem:        semaphore.NewWeighted(int64(s)),
 	}
