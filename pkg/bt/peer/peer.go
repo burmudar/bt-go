@@ -19,6 +19,105 @@ const (
 
 )
 
+type Channel struct {
+	conn net.Conn
+	send chan Message
+	done chan struct{}
+}
+
+func NewChannel(conn net.Conn) *Channel {
+	ch := &Channel{
+		conn: conn,
+		send: make(chan Message),
+		done: make(chan struct{}),
+	}
+
+	go ch.reader()
+	go ch.writer()
+
+	return ch
+}
+
+func (ch *Channel) reader() {
+	buf := bufio.NewReader(ch.conn)
+
+	for {
+		select {
+		case <-ch.done:
+			return
+		default:
+			msg, err := DecodeMessage(buf)
+			if err != nil {
+				fmt.Println("<--- failed to decode raw message ---->")
+				continue
+			}
+
+			ch.handleMessage(msg)
+		}
+	}
+}
+
+func (ch *Channel) handleMessage(msg Message) {
+	switch m := msg.(type) {
+	case ChokeType:
+		{
+			return ch.handleChoke(m)
+		}
+	case UnchokeType:
+		{
+			return ch.handleUnchoke(m)
+		}
+	case InterestedType:
+		{
+			return ch.handleInterested(m)
+		}
+	case NotInterestedType:
+		{
+			return ch.handleNotInterested(m)
+		}
+	case HaveType:
+		{
+			return ch.handleMessage(m)
+		}
+	case BitFieldType:
+		{
+			return ch.handleBitField(m)
+		}
+	case RequestType:
+		{
+			return ch.handleRequest(m)
+		}
+	case PieceType:
+		{
+			return ch.handlePiece(m)
+		}
+	case CancelType:
+		{
+			return ch.handleCancel(m)
+		}
+	case KeepAliveType:
+		{
+			return ch.handleCancel(m)
+		}
+	}
+}
+
+func (ch *Channel) writer() {
+	buf := bufio.NewWriter(ch.conn)
+
+	for m := range ch.send {
+		err := WriteMessage(buf, m)
+		if err != nil {
+			fmt.Println("<---- failed to write message ---->")
+		}
+	}
+}
+
+func (ch *Channel) Close() {
+	close(ch.send)
+	close(ch.done)
+}
+
 type Client struct {
 	debug         bool
 	PeerID        string

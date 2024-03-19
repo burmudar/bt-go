@@ -1,6 +1,9 @@
 package peer
 
-import "encoding/binary"
+import (
+	"bufio"
+	"encoding/binary"
+)
 
 func EncodeMessage(m Message) []byte {
 	tag := m.Tag()
@@ -14,4 +17,11 @@ func EncodeMessage(m Message) []byte {
 		copy(data[5:], payload)
 	}
 	return data
+}
+
+func WriteMessage(buf *bufio.Writer, msg Message) error {
+	data := EncodeMessage(msg)
+	_, err := buf.Write(data)
+
+	return err
 }

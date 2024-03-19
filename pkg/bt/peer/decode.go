@@ -11,7 +11,7 @@ import (
 	"math"
 )
 
-func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
+func read(reader *bufio.Reader, data []byte) (n int, err error) {
 	size := len(data)
 	start := 0
 	for size > 0 {
@@ -34,7 +34,7 @@ func read(reader *bufio.ReadWriter, data []byte) (n int, err error) {
 	return size, nil
 }
 
-func DecodeRawMessage(r *bufio.ReadWriter) (*RawMessage, error) {
+func DecodeRawMessage(r *bufio.Reader) (*RawMessage, error) {
 	prefix := make([]byte, 5)
 	if _, err := read(r, prefix); err != nil {
 		return nil, err
@@ -162,14 +162,14 @@ func encodeHandshake(h *Handshake) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func DecodeMessageWithCtx(ctx context.Context, r *bufio.ReadWriter) (Message, error) {
+func DecodeMessageWithCtx(ctx context.Context, r *bufio.Reader) (Message, error) {
 	do := func() (Message, error) {
 		return DecodeMessage(r)
 	}
 	return resultWithContext[Message](ctx, do)
 }
 
-func DecodeMessage(r *bufio.ReadWriter) (Message, error) {
+func DecodeMessage(r *bufio.Reader) (Message, error) {
 	msg, err := DecodeRawMessage(r)
 	if err != nil {
 		return nil, err
