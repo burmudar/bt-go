@@ -115,23 +115,16 @@ func main() {
 				FatalExit("failed to read torrent %q: %v", os.Args[2], err)
 			}
 
-			client := peer.NewClient(PeerID)
-
 			bctx := context.Background()
 			ctx, cancel := context.WithTimeout(bctx, 10*time.Second)
 			defer cancel()
-			if err = client.Connect(ctx, p); err != nil {
-				FatalExit("failed to connect to client: %v", err)
+			client, err := peer.NewClient(ctx, PeerID, p, t.Hash)
+			if err != nil {
+				FatalExit("failed to create client: %v", err)
 			}
 			defer client.Close()
 
-			ctx, cancel = context.WithTimeout(bctx, 10*time.Second)
-			defer cancel()
-			handshake, err := client.Handshake(bctx, t.Hash)
-			if err != nil {
-				FatalExit("%q handshake failed: %v", p.String(), err)
-			}
-
+			handshake := client.Channel.Handshake
 			fmt.Printf("Peer ID: %s\n", hex.EncodeToString([]byte(handshake.PeerID)))
 			fmt.Printf("Hash: %s\n", hex.EncodeToString([]byte(handshake.Hash[:])))
 
@@ -154,11 +147,14 @@ func main() {
 				FatalExit("failed to get peers: %v", os.Args[2], err)
 			}
 
+			println("connecting to peers")
 			var client *peer.Client
 			var clientErr error
 			for _, p := range peers.Peers {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-				client, clientErr = peer.NewHandshakedClient(ctx, PeerID, p, t)
+				bctx := context.Background()
+				ctx, cancel := context.WithTimeout(bctx, 10*time.Second)
+				defer cancel()
+				client, clientErr = peer.NewClient(ctx, PeerID, p, t.Hash)
 				if clientErr != nil {
 					cancel()
 					continue
@@ -171,12 +167,12 @@ func main() {
 			if clientErr != nil {
 				FatalExit("failed to create handshaked client: %v", clientErr)
 			}
+			defer client.Close()
 
-			if _, err := client.BitField(); err != nil {
-				FatalExit("failed to connect to client: %v", err)
-			}
+			println("connected")
 
-			fmt.Printf("[File %d] Downloading Piece %d from peer %s [%x] (%d)\n", t.Length, pieceIdx, client.Peer.String(), t.PieceHashes[pieceIdx], t.PieceLength)
+			println("starting download of piece")
+
 			plan := t.BlockPlan(pieceIdx, manager.MaxBlockSize)
 			if b, err := client.DownloadPiece(plan); err != nil {
 				FatalExit("piece download failure: %v", err)

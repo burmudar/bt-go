@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"time"
 )
 
 func read(reader *bufio.Reader, data []byte) (n int, err error) {
@@ -150,18 +151,6 @@ func decodeHandshake(data []byte) (*Handshake, error) {
 	}, nil
 }
 
-func encodeHandshake(h *Handshake) ([]byte, error) {
-	var buf bytes.Buffer
-
-	buf.WriteByte(byte(19))
-	buf.Write([]byte(BitTorrentProtocol))
-	buf.Write(bytes.Repeat([]byte{0}, 8))
-	buf.Write(h.Hash[:])
-	buf.Write([]byte(h.PeerID))
-
-	return buf.Bytes(), nil
-}
-
 func DecodeMessageWithCtx(ctx context.Context, r *bufio.Reader) (Message, error) {
 	do := func() (Message, error) {
 		return DecodeMessage(r)
@@ -170,7 +159,11 @@ func DecodeMessageWithCtx(ctx context.Context, r *bufio.Reader) (Message, error)
 }
 
 func DecodeMessage(r *bufio.Reader) (Message, error) {
-	msg, err := DecodeRawMessage(r)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	msg, err := resultWithContext(ctx, func() (*RawMessage, error) {
+		return DecodeRawMessage(r)
+	})
 	if err != nil {
 		return nil, err
 	}

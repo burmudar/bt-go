@@ -2,7 +2,9 @@ package peer
 
 import (
 	"bufio"
+	"context"
 	"encoding/binary"
+	"time"
 )
 
 func EncodeMessage(m Message) []byte {
@@ -20,8 +22,13 @@ func EncodeMessage(m Message) []byte {
 }
 
 func WriteMessage(buf *bufio.Writer, msg Message) error {
-	data := EncodeMessage(msg)
-	_, err := buf.Write(data)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := resultWithContext(ctx, func() (any, error) {
+		data := EncodeMessage(msg)
+		_, err := buf.Write(data)
 
+		return nil, err
+	})
 	return err
 }
