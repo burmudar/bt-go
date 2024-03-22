@@ -19,11 +19,14 @@ type ChannelState int
 
 var Choked ChannelState = 1
 var Unchoked ChannelState = 2
-var Invalid ChannelState = 3
+var ErrorState ChannelState = 3
+
+var ErrPieceUnavailable error = fmt.Errorf("peer does not have requested piece")
 
 type Channel struct {
 	ConnectedTo string
 	Handshake   *Handshake
+	BitField    *BitField
 
 	sync.Mutex
 	chokeCond *sync.Cond
@@ -36,7 +39,7 @@ type Channel struct {
 
 	onRecvHooks map[MessageTag]MessageHandler
 
-	pieces []*PieceBlock
+	Err error
 }
 
 func NewHandshakedChannel(ctx context.Context, peerID string, p *types.Peer, hash [20]byte) (*Channel, error) {
@@ -174,7 +177,7 @@ func (ch *Channel) IsChoked() bool {
 }
 
 func (ch *Channel) IsValid() bool {
-	return ch.state != Invalid
+	return ch.state != ErrorState
 }
 
 func (ch *Channel) writer() {
@@ -210,7 +213,8 @@ func (ch *Channel) reader() {
 				if err == io.EOF {
 					ch.log("reader exit - %v", err)
 					ch.Lock()
-					ch.state = Invalid
+					ch.state = ErrorState
+					ch.Err = io.EOF
 					ch.Unlock()
 					ch.Close()
 					return
@@ -284,12 +288,19 @@ func (ch *Channel) handleHave(msg Message) error {
 	ch.fireReceiveHook(msg)
 	return nil
 }
+
 func (ch *Channel) handleBitField(msg Message) error {
+	v, ok := msg.(*BitField)
+	if !ok {
+		return fmt.Errorf("expected BitField got %T", msg)
+	}
+	ch.Lock()
+	ch.BitField = v
+	defer ch.Unlock()
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handlePieceBlock(blk *PieceBlock) error {
-	ch.pieces = append(ch.pieces, blk)
 	ch.fireReceiveHook(blk)
 	return nil
 }
@@ -304,4 +315,21 @@ func (ch *Channel) handleCancel(msg Message) error {
 func (ch *Channel) handleKeepAlive(msg Message) error {
 	ch.fireReceiveHook(msg)
 	return nil
+}
+
+func (ch *Channel) HasPiece(idx int) bool {
+	byteIdx := idx / 8
+	offset := byteIdx % 8
+	ch.Lock()
+	defer ch.Unlock()
+	return ch.BitField.Field[byteIdx]>>(7-offset)&1 != 0
+}
+
+func (ch *Channel) SetPiece(idx int) {
+	byteIdx := idx / 8
+	offset := byteIdx % 8
+	ch.Lock()
+	defer ch.Unlock()
+	ch.log("setting piece %d in bitfield", idx)
+	ch.BitField.Field[byteIdx] |= 1 << (7 - offset)
 }

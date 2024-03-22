@@ -98,6 +98,9 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	// 3. unchoke
 	// 4. request
 	// 5. piece
+	if c.Channel.HasPiece(plan.PieceIndex) {
+		return nil, ErrPieceUnavailable
+	}
 
 	downloaded := make([]*PieceBlock, 0, plan.NumBlocks)
 
@@ -145,6 +148,8 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		Data:  data,
 		Hash:  sha1.Sum(data),
 	}
+
+	c.Channel.SetPiece(piece.Index)
 
 	return piece, nil
 }
