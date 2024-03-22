@@ -98,6 +98,16 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	// 3. unchoke
 	// 4. request
 	// 5. piece
+	c.Channel.SendInterested()
+	c.Channel.SendUnchoke()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	err := c.Channel.WaitFor(ctx, BitFieldType)
+	cancel()
+	if err != nil {
+		return nil, err
+	}
+
 	if c.Channel.HasPiece(plan.PieceIndex) {
 		return nil, ErrPieceUnavailable
 	}
@@ -116,9 +126,6 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		result <- blk
 		return nil
 	})
-
-	c.Channel.SendInterested()
-	c.Channel.SendUnchoke()
 
 	for i := 0; i < plan.NumBlocks; i++ {
 		c.Channel.SendPieceRequest(plan.PieceIndex, i*plan.BlockSize, plan.BlockSizeFor(i))

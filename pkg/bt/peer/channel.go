@@ -108,7 +108,7 @@ func (ch *Channel) SendHave(index int) error {
 	return nil
 }
 
-func (ch *Channel) WaitFor(tag MessageTag) error {
+func (ch *Channel) WaitFor(ctx context.Context, tag MessageTag) error {
 	recv := make(chan Message)
 
 	ch.RegisterReceiveHook(tag, func(_ Message) error {
@@ -116,8 +116,16 @@ func (ch *Channel) WaitFor(tag MessageTag) error {
 		return nil
 	})
 
-	<-recv
-	return nil
+	defer ch.RemoveReceiveHook(tag)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-recv:
+			return nil
+		}
+	}
 }
 
 func (ch *Channel) handleMessage(msg Message) error {
