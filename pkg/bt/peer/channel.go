@@ -46,9 +46,7 @@ func NewHandshakedChannel(ctx context.Context, peerID string, p *types.Peer, has
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
-	println("doing handshake", p.String())
 	h, err := doHandshake(ctx, conn, peerID, hash)
-	println("handshake done", p.String())
 	return NewChannel(conn, h), err
 }
 
@@ -120,6 +118,7 @@ func (ch *Channel) WaitFor(tag MessageTag) error {
 }
 
 func (ch *Channel) handleMessage(msg Message) error {
+	ch.log("handling %s", msg.String())
 	switch m := msg.(type) {
 	case *Choke:
 		{
@@ -163,7 +162,7 @@ func (ch *Channel) handleMessage(msg Message) error {
 		}
 	default:
 		{
-			fmt.Printf("no handler for message: %s\n", m.String())
+			ch.log("no handler for message: %s", m.String())
 		}
 	}
 
@@ -184,16 +183,15 @@ func (ch *Channel) writer() {
 	for m := range ch.send {
 		ch.chokeCond.L.Lock()
 		if ch.IsChoked() {
-			fmt.Printf("[%s] choked - waiting\n", ch.ConnectedTo)
+			ch.log("choked - waiting")
 			ch.chokeCond.Wait()
 		}
 		ch.chokeCond.L.Unlock()
-		fmt.Printf("[%s] sending %s\n", ch.ConnectedTo, m.String())
 		err := WriteMessage(buf, m)
-		fmt.Printf("[%s] flushing %s\n", ch.ConnectedTo, m.String())
 		buf.Flush()
+		ch.log("sent %s", m.String())
 		if err != nil {
-			fmt.Printf("failed to write message: %v\n", err)
+			ch.log("failed to write message: %v\n", err)
 		}
 	}
 }
@@ -206,26 +204,32 @@ func (ch *Channel) reader() {
 		case <-ch.done:
 			return
 		default:
-			fmt.Printf("[%s] reading from buffer\n", ch.ConnectedTo)
+			ch.log("reading from buffer")
 			msg, err := DecodeMessage(buf)
 			if err != nil {
 				if err == io.EOF {
-					fmt.Printf("reader exit - %v\n", err)
+					ch.log("reader exit - %v", err)
 					ch.Lock()
 					ch.state = Invalid
 					ch.Unlock()
 					ch.Close()
 					return
 				}
-				fmt.Printf("failed to decode raw message: %v", err)
+				ch.log("failed to decode raw message: %v", err)
 				continue
 			}
 
-			fmt.Printf("[%s] handling message %T\n", ch.ConnectedTo, msg)
+			ch.log("handling message %T", msg)
 			ch.handleMessage(msg)
 		}
 	}
 
+}
+
+func (ch *Channel) log(format string, args ...any) {
+	prefix := fmt.Sprintf("[%s]", ch.ConnectedTo)
+	value := fmt.Sprintf(format, args...)
+	fmt.Printf("%s %s\n", prefix, value)
 }
 
 func (ch *Channel) RegisterReceiveHook(tag MessageTag, h MessageHandler) {
@@ -269,44 +273,35 @@ func (ch *Channel) fireReceiveHook(msg Message) {
 }
 
 func (ch *Channel) handleInterested(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleNotInterested(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleHave(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleBitField(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handlePieceBlock(blk *PieceBlock) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, blk.String())
 	ch.pieces = append(ch.pieces, blk)
 	ch.fireReceiveHook(blk)
 	return nil
 }
 func (ch *Channel) handlePieceRequest(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
-
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleCancel(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleKeepAlive(msg Message) error {
-	fmt.Printf("[%s] received %s\n", ch.ConnectedTo, msg.String())
 	ch.fireReceiveHook(msg)
 	return nil
 }
