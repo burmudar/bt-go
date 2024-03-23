@@ -16,6 +16,8 @@ const (
 
 )
 
+var ErrChannelClosed = fmt.Errorf("Channel Closed")
+
 type Client struct {
 	PeerID string
 	Peer   *types.Peer
@@ -124,17 +126,19 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		return nil
 	})
 
-	for i := 0; i < plan.NumBlocks; i++ {
-		c.Channel.SendPieceRequest(plan.PieceIndex, i*plan.BlockSize, plan.BlockSizeFor(i))
-	}
+	go func() {
+		for i := 0; i < plan.NumBlocks; i++ {
+			c.Channel.SendPieceRequest(plan.PieceIndex, i*plan.BlockSize, plan.BlockSizeFor(i))
+		}
+	}()
 
 Download:
 	for {
 		select {
 		case <-c.Channel.Done:
 			{
-				fmt.Printf("[%s] Channel Done", c.Peer.String())
-				return nil, fmt.Errorf("Channel done")
+				fmt.Printf("[%s] Channel Closed\n", c.Peer.String())
+				return nil, ErrChannelClosed
 			}
 		case blk := <-result:
 			fmt.Printf("[%s] receive Piece %d from peer (%d/%d)\n", c.Peer.String(), plan.PieceIndex, len(downloaded), plan.NumBlocks)

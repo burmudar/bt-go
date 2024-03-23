@@ -160,7 +160,7 @@ func (ch *Channel) WaitFor(ctx context.Context, tag MessageTag) error {
 }
 
 func (ch *Channel) handleMessage(msg Message) error {
-	ch.log("handling %s", msg.String())
+	ch.log("<- %s", msg.String())
 	switch m := msg.(type) {
 	case *Choke:
 		{
@@ -244,24 +244,36 @@ func (ch *Channel) writer() {
 	defer ch.Close()
 	defer ch.log("<<< writer exiting >>>")
 
-	for m := range ch.send {
-		ch.log("checking choked status")
-		ch.chokeCond.L.Lock()
-		if ch.IsChoked() {
-			ch.log("choked - waiting")
-			ch.chokeCond.Wait()
-		}
-		ch.chokeCond.L.Unlock()
-		ch.log("not choked")
+	ctx := context.Background()
+	for {
+		select {
+		case <-ch.Done:
+			return
+		case m := <-ch.send:
+			{
+				ch.chokeCond.L.Lock()
+				if ch.IsChoked() {
+					ch.log("choked - waiting")
+					ch.chokeCond.Wait()
+				}
+				ch.chokeCond.L.Unlock()
 
-		err := WriteMessage(buf, m)
-		buf.Flush()
-		ch.log("sent %s", m.String())
-		if err != nil {
-			ch.log("failed to write message: %v\n", err)
+				ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+				err := WriteMessage(ctx, buf, m)
+				cancel()
+				buf.Flush()
+				ch.log("-> %s", m.String())
+				if err != nil {
+					ch.setError(err)
+					if err == ctx.Err() {
+						return
+					}
+					ch.log("failed to write message: %v\n", err)
+				}
+
+			}
 		}
 	}
-
 }
 
 func (ch *Channel) reader() {
@@ -283,7 +295,7 @@ func (ch *Channel) reader() {
 			if err != nil {
 				ch.setError(err)
 				if err == ctx.Err() {
-					ch.log("Context Deadline exceeded - returning")
+					ch.log("context Deadline exceeded - returning")
 					return
 				} else if err == io.EOF {
 					ch.log("EOF - returning")
@@ -295,7 +307,6 @@ func (ch *Channel) reader() {
 
 			}
 
-			ch.log("handling message %T", msg)
 			ch.handleMessage(msg)
 		}
 	}
@@ -330,11 +341,13 @@ func (ch *Channel) RemoveReceiveHook(tag MessageTag) {
 func (ch *Channel) Close() {
 	ch.Lock()
 	defer ch.Unlock()
-	if ch.IsState(Closed) {
+	if !ch.IsState(Closed) {
 		ch.SetState(Closed)
 		close(ch.Done)
 		close(ch.send)
 		ch.log("Closed")
+	} else {
+		ch.log("Already Closed")
 	}
 }
 
@@ -348,8 +361,10 @@ func (ch *Channel) handleChoke(msg Message) error {
 func (ch *Channel) handleUnchoke(msg Message) error {
 	ch.chokeCond.L.Lock()
 	defer ch.chokeCond.L.Unlock()
-	ch.SetState(Unchoked)
-	ch.chokeCond.Signal()
+	if ch.IsChoked() {
+		ch.SetState(Unchoked)
+		ch.chokeCond.Signal()
+	}
 	ch.fireReceiveHook(msg)
 	return nil
 }
@@ -403,23 +418,18 @@ func (ch *Channel) handleKeepAlive(msg Message) error {
 }
 
 func (ch *Channel) HasPiece(idx int) bool {
-	length := len(ch.BitField.Field)
-	if length == 0 || idx > length {
-		return false
-	}
 	byteIdx := idx / 8
-	offset := byteIdx % 8
+	offset := idx % 8
 	ch.Lock()
 	defer ch.Unlock()
-
 	return ch.BitField.Field[byteIdx]>>(7-offset)&1 != 0
 }
 
 func (ch *Channel) SetPiece(idx int) {
 	byteIdx := idx / 8
-	offset := byteIdx % 8
-	ch.BitField.Field[byteIdx] |= 1 << (7 - offset)
+	offset := idx % 8
 	ch.Lock()
 	defer ch.Unlock()
+	ch.BitField.Field[byteIdx] |= 1 << (7 - offset)
 	ch.log("setting piece %d in bitfield", idx)
 }

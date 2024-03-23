@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/binary"
-	"time"
 )
 
 func EncodeMessage(m Message) []byte {
@@ -21,9 +20,7 @@ func EncodeMessage(m Message) []byte {
 	return data
 }
 
-func WriteMessage(buf *bufio.Writer, msg Message) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
+func WriteMessage(ctx context.Context, buf *bufio.Writer, msg Message) error {
 	_, err := resultWithContext(ctx, func() (any, error) {
 		data := EncodeMessage(msg)
 		_, err := buf.Write(data)

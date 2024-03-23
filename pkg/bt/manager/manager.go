@@ -160,11 +160,11 @@ func (dp *DownloaderPool) resultCh() chan peer.Result[[]*types.Piece] {
 				case *PieceDownloadFailedErr:
 					fmt.Printf("\n--- Piece %d failed - Retrying ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
-					dp.Download(e.BlockPlan)
+					go dp.Download(e.BlockPlan)
 				case *PeerClientErr:
 					fmt.Printf("\n--- Peer Client err - Retrying piece %d ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
-					dp.Download(e.BlockPlan)
+					go dp.Download(e.BlockPlan)
 				default:
 					allErrs = multierror.Append(allErrs, err)
 
@@ -221,27 +221,38 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 	fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
 	piece, err := client.DownloadPiece(piecePlan)
 	if err != nil {
-		if err != peer.ErrPieceUnavailable {
+		switch err {
+		case peer.ErrChannelClosed:
+			fmt.Printf("[downloader %d] client channel closed\n", id)
+			return &PeerClientErr{
+				Err:       err,
+				BlockPlan: piecePlan,
+			}
+		case peer.ErrPieceUnavailable:
 			fmt.Printf("[downloader %d] piece unavailable %d\n", id, piecePlan.PieceIndex)
+			fallthrough
+		default:
 			return &PieceDownloadFailedErr{BlockPlan: piecePlan, Err: err}
 		}
-		return err
 	}
-	fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
-
 	dp.complete <- piece
 	return nil
 }
 
 func (dp *DownloaderPool) startWorker(id int) {
+	fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [START] >>>>>>>>>>>>>>>>>>>>\n", id)
 	defer dp.wg.Done()
 	for piecePlan := range dp.workC {
+		fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK Piece %d] >>>>>>>>>>>>>>>>>>>>\n", id, piecePlan.PieceIndex)
 		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
+
+			fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK ERR -> ] >>>>>>>>>>>>>>>>>>>>\n", id)
 			dp.errC <- err
+			fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK ERR <> ] >>>>>>>>>>>>>>>>>>>>\n", id)
 		}
 	}
 
-	fmt.Printf("####### Worker %d exiting ########", id)
+	fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [QUIT] >>>>>>>>>>>>>>>>>>>>\n", id)
 }
 
 func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
@@ -250,7 +261,6 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 	var dp = NewDownloaderPool(3, p)
 
 	results := dp.Start()
-	fmt.Println("<<<<<<<<<<<<<<<<downloading plans>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
 	for _, plan := range plans {
 		dp.Download(plan)

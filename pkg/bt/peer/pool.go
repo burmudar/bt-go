@@ -28,6 +28,7 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 			return nil, fmt.Errorf("not peers left to construct")
 		}
 
+		fmt.Printf("\n\n[%s] constructing peer client\n\n", peer.String())
 		client, err := NewClient(ctx, peerID, peer, torrent)
 		if err != nil {
 			fmt.Printf("failed to create handshaked client(%s): %v(%T)\n", peer.String(), err, err)
@@ -42,7 +43,7 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 			return
 		}
 		if client, ok := res.(*Client); ok {
-			fmt.Println("destroying - ", client.PeerID)
+			fmt.Println("destroying - ", client.Peer.String())
 			client.Close()
 			peerQueue.Add(client.Peer)
 		}
@@ -73,5 +74,14 @@ func (p *peerPool) Get(ctx context.Context) (*Client, func(), error) {
 		return nil, noop, fmt.Errorf("[%s] client is invalid - destroying", client.Peer.String())
 	}
 
-	return client, res.Release, nil
+	release := func() {
+		if !client.Channel.IsValid() {
+			fmt.Printf("(pool) client[%s] is invalid - destroying\n", client.Peer.String())
+			res.Destroy()
+		} else {
+			res.Release()
+		}
+	}
+
+	return client, release, nil
 }
