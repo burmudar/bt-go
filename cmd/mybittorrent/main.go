@@ -118,7 +118,7 @@ func main() {
 			bctx := context.Background()
 			ctx, cancel := context.WithTimeout(bctx, 10*time.Second)
 			defer cancel()
-			client, err := peer.NewClient(ctx, PeerID, p, t.Hash)
+			client, err := peer.NewClient(ctx, PeerID, p, t)
 			if err != nil {
 				FatalExit("failed to create client: %v", err)
 			}
@@ -154,7 +154,7 @@ func main() {
 				bctx := context.Background()
 				ctx, cancel := context.WithTimeout(bctx, 10*time.Second)
 				defer cancel()
-				client, clientErr = peer.NewClient(ctx, PeerID, p, t.Hash)
+				client, clientErr = peer.NewClient(ctx, PeerID, p, t)
 				if clientErr != nil {
 					cancel()
 					continue

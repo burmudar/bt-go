@@ -15,7 +15,7 @@ type Block struct {
 func TorrentBlocksFor(m *types.Torrent, piece, blockSize int) []Block {
 	var (
 		blocks []Block
-		length = m.LengthOf(piece)
+		length = m.LengthOfPiece(piece)
 	)
 
 	for i := 0; i < length; i += blockSize {
@@ -62,7 +62,7 @@ func TestBlocks(t *testing.T) {
 				t.Fatalf("incorrect last block index - wanted %d got %d", len(blocks)-1, plan.LastBlockIndex)
 			}
 
-			lastPieceLength := torrent.LengthOf(lastPiece)
+			lastPieceLength := torrent.LengthOfPiece(lastPiece)
 			if lastPieceLength != plan.PieceLength {
 				t.Fatalf("incorrect last piece length - wanted %d got %d", lastPieceLength, plan.PieceLength)
 			}

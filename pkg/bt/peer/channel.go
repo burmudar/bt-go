@@ -7,8 +7,12 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt"
 	"github.com/codecrafters-io/bittorrent-starter-go/pkg/bt/types"
+	"golang.org/x/sync/semaphore"
 )
 
 type MessageHandler func(msg Message) error
@@ -20,6 +24,22 @@ type ChannelState int
 var Choked ChannelState = 1
 var Unchoked ChannelState = 2
 var ErrorState ChannelState = 3
+var Closed ChannelState = 4
+
+func (s ChannelState) String() string {
+	switch s {
+	case Choked:
+		return "Choked"
+	case Unchoked:
+		return "Unchoked"
+	case ErrorState:
+		return "ErrorState"
+	case Closed:
+		return "Closed"
+
+	}
+	return "Unknown"
+}
 
 var ErrPieceUnavailable error = fmt.Errorf("peer does not have requested piece")
 
@@ -29,41 +49,48 @@ type Channel struct {
 	BitField    *BitField
 
 	sync.Mutex
-	chokeCond *sync.Cond
+	chokeCond     *sync.Cond
+	sendSemaphore semaphore.Weighted
 
 	conn  net.Conn
-	state ChannelState
+	state *atomic.Value
 
 	send chan Message
-	done chan struct{}
+	Done chan struct{}
 
 	onRecvHooks map[MessageTag]MessageHandler
 
 	Err error
 }
 
-func NewHandshakedChannel(ctx context.Context, peerID string, p *types.Peer, hash [20]byte) (*Channel, error) {
+func NewHandshakedChannel(ctx context.Context, peerID string, p *types.Peer, torrent *types.Torrent) (*Channel, error) {
 	dialer := &net.Dialer{}
 	conn, err := dialer.DialContext(ctx, "tcp", p.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
-	h, err := doHandshake(ctx, conn, peerID, hash)
-	return NewChannel(conn, h), err
+	h, err := doHandshake(ctx, conn, peerID, torrent.Hash)
+	fieldSize := bt.Ceil(torrent.GetPieceCount(), 8)
+	bitField := &BitField{Field: make([]byte, fieldSize)}
+	return NewChannel(conn, h, bitField), err
 }
 
-func NewChannel(conn net.Conn, handshake *Handshake) *Channel {
+func NewChannel(conn net.Conn, handshake *Handshake, bitField *BitField) *Channel {
+	var state atomic.Value
+	state.Store(Unchoked)
 	ch := &Channel{
 		Mutex:       sync.Mutex{},
 		ConnectedTo: conn.RemoteAddr().String(),
 		Handshake:   handshake,
+		BitField:    bitField,
 		conn:        conn,
 		send:        make(chan Message, MaxSendMessages),
-		done:        make(chan struct{}),
+		Done:        make(chan struct{}),
 
-		chokeCond: sync.NewCond(&sync.Mutex{}),
-		state:     Unchoked,
+		sendSemaphore: *semaphore.NewWeighted(5),
+		chokeCond:     sync.NewCond(&sync.Mutex{}),
+		state:         &state,
 
 		onRecvHooks: map[MessageTag]MessageHandler{},
 	}
@@ -86,6 +113,7 @@ func (ch *Channel) SendInterested() error {
 	if !ch.IsValid() {
 		return fmt.Errorf("[%s] in invalid state", ch.ConnectedTo)
 	}
+
 	ch.send <- &Interested{}
 	return nil
 }
@@ -104,6 +132,9 @@ func (ch *Channel) SendPieceRequest(index, begin, length int) error {
 }
 
 func (ch *Channel) SendHave(index int) error {
+	if !ch.IsValid() {
+		return fmt.Errorf("[%s] in invalid state", ch.ConnectedTo)
+	}
 	ch.send <- &Have{index}
 	return nil
 }
@@ -180,24 +211,49 @@ func (ch *Channel) handleMessage(msg Message) error {
 	return nil
 }
 
+func (ch *Channel) GetState() ChannelState {
+	v := ch.state.Load().(ChannelState)
+	return v
+}
+
+func (ch *Channel) SetState(v ChannelState) {
+	ch.state.Store(v)
+}
+
+func (ch *Channel) IsState(v ...ChannelState) bool {
+	current := ch.GetState()
+	for _, other := range v {
+		if current == other {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (ch *Channel) IsChoked() bool {
-	return ch.state == Choked && ch.IsValid()
+	return ch.IsState(Choked) && ch.IsValid()
 }
 
 func (ch *Channel) IsValid() bool {
-	return ch.state != ErrorState
+	return !ch.IsState(ErrorState, Closed)
 }
 
 func (ch *Channel) writer() {
 	buf := bufio.NewWriter(ch.conn)
+	defer ch.Close()
+	defer ch.log("<<< writer exiting >>>")
 
 	for m := range ch.send {
+		ch.log("checking choked status")
 		ch.chokeCond.L.Lock()
 		if ch.IsChoked() {
 			ch.log("choked - waiting")
 			ch.chokeCond.Wait()
 		}
 		ch.chokeCond.L.Unlock()
+		ch.log("not choked")
+
 		err := WriteMessage(buf, m)
 		buf.Flush()
 		ch.log("sent %s", m.String())
@@ -205,30 +261,38 @@ func (ch *Channel) writer() {
 			ch.log("failed to write message: %v\n", err)
 		}
 	}
+
 }
 
 func (ch *Channel) reader() {
 	buf := bufio.NewReader(ch.conn)
+	defer ch.Close()
 
+	defer ch.log("<<< reader exiting >>>")
+
+	ctx := context.Background()
 	for {
 		select {
-		case <-ch.done:
+		case <-ch.Done:
 			return
 		default:
 			ch.log("reading from buffer")
-			msg, err := DecodeMessage(buf)
+			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			msg, err := DecodeMessage(ctx, buf)
+			cancel()
 			if err != nil {
-				if err == io.EOF {
-					ch.log("reader exit - %v", err)
-					ch.Lock()
-					ch.state = ErrorState
-					ch.Err = io.EOF
-					ch.Unlock()
-					ch.Close()
+				ch.setError(err)
+				if err == ctx.Err() {
+					ch.log("Context Deadline exceeded - returning")
 					return
+				} else if err == io.EOF {
+					ch.log("EOF - returning")
+					return
+				} else {
+					ch.log("failed to decode raw message: %v", err)
+					continue
 				}
-				ch.log("failed to decode raw message: %v", err)
-				continue
+
 			}
 
 			ch.log("handling message %T", msg)
@@ -236,6 +300,13 @@ func (ch *Channel) reader() {
 		}
 	}
 
+}
+
+func (ch *Channel) setError(err error) {
+	ch.Lock()
+	defer ch.Unlock()
+	ch.SetState(ErrorState)
+	ch.Err = err
 }
 
 func (ch *Channel) log(format string, args ...any) {
@@ -257,21 +328,27 @@ func (ch *Channel) RemoveReceiveHook(tag MessageTag) {
 }
 
 func (ch *Channel) Close() {
-	close(ch.send)
-	close(ch.done)
+	ch.Lock()
+	defer ch.Unlock()
+	if ch.IsState(Closed) {
+		ch.SetState(Closed)
+		close(ch.Done)
+		close(ch.send)
+		ch.log("Closed")
+	}
 }
 
 func (ch *Channel) handleChoke(msg Message) error {
-	ch.Lock()
-	ch.state = Choked
 	ch.chokeCond.L.Lock()
-	defer ch.Unlock()
+	ch.SetState(Choked)
+	defer ch.chokeCond.L.Unlock()
 	ch.fireReceiveHook(msg)
 	return nil
 }
 func (ch *Channel) handleUnchoke(msg Message) error {
 	ch.chokeCond.L.Lock()
-	ch.state = Unchoked
+	defer ch.chokeCond.L.Unlock()
+	ch.SetState(Unchoked)
 	ch.chokeCond.Signal()
 	ch.fireReceiveHook(msg)
 	return nil
@@ -326,18 +403,23 @@ func (ch *Channel) handleKeepAlive(msg Message) error {
 }
 
 func (ch *Channel) HasPiece(idx int) bool {
+	length := len(ch.BitField.Field)
+	if length == 0 || idx > length {
+		return false
+	}
 	byteIdx := idx / 8
 	offset := byteIdx % 8
 	ch.Lock()
 	defer ch.Unlock()
+
 	return ch.BitField.Field[byteIdx]>>(7-offset)&1 != 0
 }
 
 func (ch *Channel) SetPiece(idx int) {
 	byteIdx := idx / 8
 	offset := byteIdx % 8
+	ch.BitField.Field[byteIdx] |= 1 << (7 - offset)
 	ch.Lock()
 	defer ch.Unlock()
 	ch.log("setting piece %d in bitfield", idx)
-	ch.BitField.Field[byteIdx] |= 1 << (7 - offset)
 }

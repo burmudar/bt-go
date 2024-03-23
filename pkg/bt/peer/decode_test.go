@@ -3,6 +3,7 @@ package peer
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"testing"
 )
 
@@ -62,7 +63,7 @@ func TestDecodeMessage(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			buf := bytes.NewBuffer(tc.data)
-			msg, err := DecodeMessage(bufio.NewReader(buf))
+			msg, err := DecodeMessage(context.TODO(), bufio.NewReader(buf))
 			if err != nil {
 				t.Errorf("error decoding message: %v", err)
 			}
@@ -131,7 +132,7 @@ func TestEncodeAndDecodeOfSameMsg(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			data := EncodeMessage(tc.message)
-			other, err := DecodeMessage(bufio.NewReader(bytes.NewBuffer(data)))
+			other, err := DecodeMessage(context.TODO(), bufio.NewReader(bytes.NewBuffer(data)))
 			if err != nil {
 				t.Fatalf("failed to decode message: %v", err)
 			}

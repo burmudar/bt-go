@@ -28,9 +28,9 @@ func NewPool(peerID string, peers *types.PeerSpec, torrent *types.Torrent) (Pool
 			return nil, fmt.Errorf("not peers left to construct")
 		}
 
-		client, err := NewClient(ctx, peerID, peer, torrent.Hash)
+		client, err := NewClient(ctx, peerID, peer, torrent)
 		if err != nil {
-			fmt.Printf("failed to  create handshaked client: %v", err)
+			fmt.Printf("failed to create handshaked client(%s): %v(%T)\n", peer.String(), err, err)
 			peerQueue.Add(peer)
 			return nil, err
 		}

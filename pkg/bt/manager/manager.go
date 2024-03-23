@@ -119,7 +119,7 @@ func NewDownloaderPool(s int, clientPool peer.Pool) *DownloaderPool {
 	return &DownloaderPool{
 		Size:       s,
 		clientPool: clientPool,
-		errC:       make(chan error),
+		errC:       make(chan error, 5),
 		workC:      make(chan *types.BlockPlan),
 		complete:   make(chan *types.Piece, s),
 		wg:         &sync.WaitGroup{},
@@ -127,17 +127,21 @@ func NewDownloaderPool(s int, clientPool peer.Pool) *DownloaderPool {
 	}
 }
 
-func (dp *DownloaderPool) Start() {
+func (dp *DownloaderPool) Start() chan peer.Result[[]*types.Piece] {
 	for i := 0; i < dp.Size; i++ {
 		dp.wg.Add(1)
 		go dp.startWorker(i)
 	}
+
+	return dp.resultCh()
 }
 
-func (dp *DownloaderPool) Wait() ([]*types.Piece, error) {
-	var allPieces = []*types.Piece{}
-	var allErrs error
+func (dp *DownloaderPool) resultCh() chan peer.Result[[]*types.Piece] {
+
+	resultC := make(chan peer.Result[[]*types.Piece])
 	go func() {
+		var allPieces = []*types.Piece{}
+		var allErrs error
 	loop:
 		for {
 			select {
@@ -151,13 +155,14 @@ func (dp *DownloaderPool) Wait() ([]*types.Piece, error) {
 				}
 
 			case err := <-dp.errC:
+				fmt.Printf("[ERROR <-] %v (%T)\n", err, err)
 				switch e := err.(type) {
 				case *PieceDownloadFailedErr:
-					fmt.Printf("\nPiece %d failed - Retrying\n", e.BlockPlan.PieceLength)
+					fmt.Printf("\n--- Piece %d failed - Retrying ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
 					dp.Download(e.BlockPlan)
 				case *PeerClientErr:
-					fmt.Printf("\nPeer Client err - Retrying piece %d\n", e.BlockPlan.PieceLength)
+					fmt.Printf("\n--- Peer Client err - Retrying piece %d ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
 					dp.Download(e.BlockPlan)
 				default:
@@ -167,14 +172,18 @@ func (dp *DownloaderPool) Wait() ([]*types.Piece, error) {
 			}
 		}
 		close(dp.workC)
+		dp.wg.Wait()
+
+		close(dp.errC)
+		close(dp.complete)
+
+		resultC <- peer.Result[[]*types.Piece]{
+			R:   allPieces,
+			Err: allErrs,
+		}
 	}()
 
-	dp.wg.Wait()
-
-	close(dp.errC)
-	close(dp.complete)
-
-	return allPieces, allErrs
+	return resultC
 
 }
 
@@ -202,6 +211,7 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 	client, release, err := dp.clientPool.Get(innerCtx)
 	defer release()
 	if err != nil {
+		fmt.Printf("[downloader %d] failed to get client (PeerClientErr): %v\n", id, err)
 		return &PeerClientErr{
 			Err:       fmt.Errorf("[downloader %d] failed to retrieve client from pool: %w", id, err),
 			BlockPlan: piecePlan,
@@ -211,7 +221,11 @@ func (dp *DownloaderPool) doWorkerDownload(id int, piecePlan *types.BlockPlan) e
 	fmt.Printf("[downloader %d] downloading piece %d\n", id, piecePlan.PieceIndex)
 	piece, err := client.DownloadPiece(piecePlan)
 	if err != nil {
-		return &PieceDownloadFailedErr{BlockPlan: piecePlan, Err: err}
+		if err != peer.ErrPieceUnavailable {
+			fmt.Printf("[downloader %d] piece unavailable %d\n", id, piecePlan.PieceIndex)
+			return &PieceDownloadFailedErr{BlockPlan: piecePlan, Err: err}
+		}
+		return err
 	}
 	fmt.Printf("[downloader %d] piece %d downloaded!\n", id, piecePlan.PieceIndex)
 
@@ -223,7 +237,6 @@ func (dp *DownloaderPool) startWorker(id int) {
 	defer dp.wg.Done()
 	for piecePlan := range dp.workC {
 		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
-			fmt.Printf("\n[downloader %d] err: %v\n", id, err)
 			dp.errC <- err
 		}
 	}
@@ -236,13 +249,19 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 
 	var dp = NewDownloaderPool(3, p)
 
-	dp.Start()
+	results := dp.Start()
+	fmt.Println("<<<<<<<<<<<<<<<<downloading plans>>>>>>>>>>>>>>>>>>>>>>>>>>")
 
 	for _, plan := range plans {
 		dp.Download(plan)
 	}
 
-	pieces, err := dp.Wait()
+	downloadResult := <-results
+	if downloadResult.Err != nil {
+		fmt.Printf("<<<<<<< ERR: %v >>>>>>>>>>>>>>", downloadResult.Err)
+	}
+
+	pieces := downloadResult.R
 
 	fmt.Printf("%d pieces downloaded\n", len(pieces))
 
@@ -253,5 +272,5 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 		return p1.Index <= p2.Index
 	})
 
-	return pieces, err
+	return pieces, downloadResult.Err
 }

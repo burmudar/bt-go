@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"time"
 )
 
 func read(reader *bufio.Reader, data []byte) (n int, err error) {
@@ -75,6 +74,7 @@ func DecodeRawMessage(r *bufio.Reader) (*RawMessage, error) {
 
 func decodeBitField(msg *RawMessage) (*BitField, error) {
 	var result BitField
+	fmt.Printf("bitfield: %b\n", msg.Payload)
 	result.Field = msg.Payload
 	return &result, nil
 }
@@ -151,16 +151,7 @@ func decodeHandshake(data []byte) (*Handshake, error) {
 	}, nil
 }
 
-func DecodeMessageWithCtx(ctx context.Context, r *bufio.Reader) (Message, error) {
-	do := func() (Message, error) {
-		return DecodeMessage(r)
-	}
-	return resultWithContext[Message](ctx, do)
-}
-
-func DecodeMessage(r *bufio.Reader) (Message, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+func DecodeMessage(ctx context.Context, r *bufio.Reader) (Message, error) {
 	msg, err := resultWithContext(ctx, func() (*RawMessage, error) {
 		return DecodeRawMessage(r)
 	})

@@ -97,14 +97,18 @@ func (m *Torrent) InfoDict() map[string]interface{} {
 	return info
 }
 
-func (m *Torrent) LengthOf(p int) int {
+func (m *Torrent) GetPieceCount() int {
+	return len(m.PieceHashes)
+}
+
+func (m *Torrent) LengthOfPiece(p int) int {
 	if p == len(m.PieceHashes)-1 {
 		return m.Length % m.PieceLength
 	}
 	return m.PieceLength
 }
 
-func (m *Torrent) HashFor(p int) []byte {
+func (m *Torrent) HashForPiece(p int) []byte {
 	if p >= len(m.PieceHashes) {
 		return nil
 	}

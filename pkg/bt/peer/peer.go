@@ -28,10 +28,10 @@ type Result[T any] struct {
 	Err error
 }
 
-func NewClient(ctx context.Context, peerID string, peer *types.Peer, hash [20]byte) (*Client, error) {
+func NewClient(ctx context.Context, peerID string, peer *types.Peer, torrent *types.Torrent) (*Client, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	channel, err := NewHandshakedChannel(ctx, peerID, peer, hash)
+	channel, err := NewHandshakedChannel(ctx, peerID, peer, torrent)
 
 	if err != nil {
 		return nil, err
@@ -98,13 +98,10 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	// 3. unchoke
 	// 4. request
 	// 5. piece
-	c.Channel.SendInterested()
-	c.Channel.SendUnchoke()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-	err := c.Channel.WaitFor(ctx, BitFieldType)
-	cancel()
-	if err != nil {
+	if err := c.Channel.SendUnchoke(); err != nil {
+		return nil, err
+	}
+	if err := c.Channel.SendInterested(); err != nil {
 		return nil, err
 	}
 
@@ -113,8 +110,8 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 	}
 
 	downloaded := make([]*PieceBlock, 0, plan.NumBlocks)
-
 	result := make(chan *PieceBlock, plan.NumBlocks)
+	defer close(result)
 
 	c.Channel.RegisterReceiveHook(PieceType, func(msg Message) error {
 		blk, ok := msg.(*PieceBlock)
@@ -131,18 +128,26 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		c.Channel.SendPieceRequest(plan.PieceIndex, i*plan.BlockSize, plan.BlockSizeFor(i))
 	}
 
-	for blk := range result {
-		fmt.Printf("[%s] receive Piece %d from peer (%d/%d)\n", c.Peer.String(), plan.PieceIndex, len(downloaded), plan.NumBlocks)
-		downloaded = append(downloaded, blk)
+Download:
+	for {
+		select {
+		case <-c.Channel.Done:
+			{
+				fmt.Printf("[%s] Channel Done", c.Peer.String())
+				return nil, fmt.Errorf("Channel done")
+			}
+		case blk := <-result:
+			fmt.Printf("[%s] receive Piece %d from peer (%d/%d)\n", c.Peer.String(), plan.PieceIndex, len(downloaded), plan.NumBlocks)
+			downloaded = append(downloaded, blk)
 
-		if len(downloaded) == plan.NumBlocks {
-			break
+			if len(downloaded) == plan.NumBlocks {
+				break Download
+			}
 		}
 	}
 
 	c.Channel.SendHave(plan.PieceIndex)
 	c.Channel.RemoveReceiveHook(PieceType)
-	close(result)
 
 	data, err := assembleData(downloaded)
 	if err != nil {
