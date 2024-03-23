@@ -107,9 +107,9 @@ func (c *Client) DownloadPiece(plan *types.BlockPlan) (*types.Piece, error) {
 		return nil, err
 	}
 
-	if c.Channel.HasPiece(plan.PieceIndex) {
-		return nil, ErrPieceUnavailable
-	}
+	// if c.Channel.HasPiece(plan.PieceIndex) {
+	// 	return nil, ErrPieceUnavailable
+	// }
 
 	downloaded := make([]*PieceBlock, 0, plan.NumBlocks)
 	result := make(chan *PieceBlock, plan.NumBlocks)
