@@ -74,7 +74,6 @@ func DecodeRawMessage(r *bufio.Reader) (*RawMessage, error) {
 
 func decodeBitField(msg *RawMessage) (*BitField, error) {
 	var result BitField
-	fmt.Printf("bitfield: %b\n", msg.Payload)
 	result.Field = msg.Payload
 	return &result, nil
 }

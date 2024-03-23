@@ -151,18 +151,16 @@ func (dp *DownloaderPool) resultCh() chan peer.Result[[]*types.Piece] {
 				if total == int64(len(allPieces)) {
 					break loop
 				} else {
-					fmt.Println("\n\nLeft:", total-int64(len(allPieces)))
+					fmt.Printf("--- (%d/%d)\n", len(allPieces), total)
 				}
-
 			case err := <-dp.errC:
-				fmt.Printf("[ERROR <-] %v (%T)\n", err, err)
 				switch e := err.(type) {
 				case *PieceDownloadFailedErr:
-					fmt.Printf("\n--- Piece %d failed - Retrying ---\n", e.BlockPlan.PieceLength)
+					fmt.Printf("--- Piece %d failed - Retrying ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
 					go dp.Download(e.BlockPlan)
 				case *PeerClientErr:
-					fmt.Printf("\n--- Peer Client err - Retrying piece %d ---\n", e.BlockPlan.PieceLength)
+					fmt.Printf("--- Peer Client err - Retrying piece %d ---\n", e.BlockPlan.PieceLength)
 					dp.count.Add(-1)
 					go dp.Download(e.BlockPlan)
 				default:
@@ -246,9 +244,8 @@ func (dp *DownloaderPool) startWorker(id int) {
 		fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK Piece %d] >>>>>>>>>>>>>>>>>>>>\n", id, piecePlan.PieceIndex)
 		if err := dp.doWorkerDownload(id, piecePlan); err != nil {
 
-			fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK ERR -> ] >>>>>>>>>>>>>>>>>>>>\n", id)
 			dp.errC <- err
-			fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK ERR <> ] >>>>>>>>>>>>>>>>>>>>\n", id)
+			fmt.Printf("<<<<<<<<<<<<<<<< WORKER %d [WORK ERR ] >>>>>>>>>>>>>>>>>>>>\n", id)
 		}
 	}
 
@@ -268,7 +265,7 @@ func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 
 	downloadResult := <-results
 	if downloadResult.Err != nil {
-		fmt.Printf("<<<<<<< ERR: %v >>>>>>>>>>>>>>", downloadResult.Err)
+		fmt.Printf("<< ERR: %v >>", downloadResult.Err)
 	}
 
 	pieces := downloadResult.R

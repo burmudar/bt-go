@@ -43,6 +43,8 @@ func (s ChannelState) String() string {
 
 var ErrPieceUnavailable error = fmt.Errorf("peer does not have requested piece")
 
+var DEBUG = false
+
 type Channel struct {
 	ConnectedTo string
 	Handshake   *Handshake
@@ -160,7 +162,7 @@ func (ch *Channel) WaitFor(ctx context.Context, tag MessageTag) error {
 }
 
 func (ch *Channel) handleMessage(msg Message) error {
-	ch.log("<- %s", msg.String())
+	ch.debug("<- %s", msg.String())
 	switch m := msg.(type) {
 	case *Choke:
 		{
@@ -242,7 +244,7 @@ func (ch *Channel) IsValid() bool {
 func (ch *Channel) writer() {
 	buf := bufio.NewWriter(ch.conn)
 	defer ch.Close()
-	defer ch.log("<<< writer exiting >>>")
+	defer ch.debug("<<< writer exiting >>>")
 
 	ctx := context.Background()
 	for {
@@ -262,7 +264,7 @@ func (ch *Channel) writer() {
 				err := WriteMessage(ctx, buf, m)
 				cancel()
 				buf.Flush()
-				ch.log("-> %s", m.String())
+				ch.debug("-> %s", m.String())
 				if err != nil {
 					ch.setError(err)
 					if err == ctx.Err() {
@@ -280,7 +282,7 @@ func (ch *Channel) reader() {
 	buf := bufio.NewReader(ch.conn)
 	defer ch.Close()
 
-	defer ch.log("<<< reader exiting >>>")
+	defer ch.debug("<<< reader exiting >>>")
 
 	ctx := context.Background()
 	for {
@@ -288,17 +290,16 @@ func (ch *Channel) reader() {
 		case <-ch.Done:
 			return
 		default:
-			ch.log("reading from buffer")
 			ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 			msg, err := DecodeMessage(ctx, buf)
 			cancel()
 			if err != nil {
 				ch.setError(err)
 				if err == ctx.Err() {
-					ch.log("context Deadline exceeded - returning")
+					ch.debug("context Deadline exceeded - returning")
 					return
 				} else if err == io.EOF {
-					ch.log("EOF - returning")
+					ch.debug("EOF - returning")
 					return
 				} else {
 					ch.log("failed to decode raw message: %v", err)
@@ -318,6 +319,14 @@ func (ch *Channel) setError(err error) {
 	defer ch.Unlock()
 	ch.SetState(ErrorState)
 	ch.Err = err
+}
+
+func (ch *Channel) debug(format string, args ...any) {
+	if DEBUG {
+		prefix := fmt.Sprintf("[%s]", ch.ConnectedTo)
+		value := fmt.Sprintf(format, args...)
+		fmt.Printf("%s %s\n", prefix, value)
+	}
 }
 
 func (ch *Channel) log(format string, args ...any) {
@@ -345,9 +354,9 @@ func (ch *Channel) Close() {
 		ch.SetState(Closed)
 		close(ch.Done)
 		close(ch.send)
-		ch.log("Closed")
+		ch.debug("closed")
 	} else {
-		ch.log("Already Closed")
+		ch.debug("already Closed")
 	}
 }
 
