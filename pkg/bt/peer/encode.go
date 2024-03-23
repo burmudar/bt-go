@@ -7,6 +7,9 @@ import (
 )
 
 func EncodeMessage(m Message) []byte {
+	if m == nil {
+		panic("Message cannot be nil")
+	}
 	tag := m.Tag()
 	payload := m.Payload()
 	data := make([]byte, 4+1+len(payload))
@@ -21,6 +24,9 @@ func EncodeMessage(m Message) []byte {
 }
 
 func WriteMessage(ctx context.Context, buf *bufio.Writer, msg Message) error {
+	if msg == nil {
+		panic("Message cannot be nil")
+	}
 	_, err := resultWithContext(ctx, func() (any, error) {
 		data := EncodeMessage(msg)
 		_, err := buf.Write(data)

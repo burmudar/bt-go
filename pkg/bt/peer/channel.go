@@ -90,9 +90,8 @@ func NewChannel(conn net.Conn, handshake *Handshake, bitField *BitField) *Channe
 		send:        make(chan Message, MaxSendMessages),
 		Done:        make(chan struct{}),
 
-		sendSemaphore: *semaphore.NewWeighted(5),
-		chokeCond:     sync.NewCond(&sync.Mutex{}),
-		state:         &state,
+		chokeCond: sync.NewCond(&sync.Mutex{}),
+		state:     &state,
 
 		onRecvHooks: map[MessageTag]MessageHandler{},
 	}
@@ -253,6 +252,10 @@ func (ch *Channel) writer() {
 			return
 		case m := <-ch.send:
 			{
+				if m == nil {
+					ch.log("got nil message - ignoring")
+					continue
+				}
 				ch.chokeCond.L.Lock()
 				if ch.IsChoked() {
 					ch.log("choked - waiting")

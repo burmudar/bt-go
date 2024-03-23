@@ -255,7 +255,7 @@ func (dp *DownloaderPool) startWorker(id int) {
 func download(p peer.Pool, torrent *types.Torrent) ([]*types.Piece, error) {
 	plans := torrent.AllBlockPlans(MaxBlockSize)
 
-	var dp = NewDownloaderPool(3, p)
+	var dp = NewDownloaderPool(10, p)
 
 	results := dp.Start()
 
